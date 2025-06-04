@@ -1,5 +1,3 @@
-# imdb_recommendation_flask_app.py
-
 import csv
 from flask import Flask, render_template_string, request
 from typing import List
