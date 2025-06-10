@@ -9,7 +9,7 @@ pipeline {
     stages {
         stage('Checkout Code') {
             steps {                
-                git url: 'git@github.com:CodeInsightAcademy/movie-cd.git', branch: 'master'
+                git url: 'git@github.com:CodeInsightAcademy/JenkinsTest1.git', branch: 'main'
             }
         }
 
