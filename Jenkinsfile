@@ -8,7 +8,7 @@ pipeline {
 
     stages {
         stage('Checkout Code') {
-            steps {                
+            steps {                    
                 git url: 'git@github.com:CodeInsightAcademy/JenkinsTest1.git', branch: 'main'
             }
         }
