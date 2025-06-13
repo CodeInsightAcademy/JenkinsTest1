@@ -11,9 +11,12 @@ pipeline {
         ZAP_BASE_DIR = "zap" // Directory to store ZAP download and extraction
         ZAP_INSTALL_DIR = "${ZAP_BASE_DIR}/ZAP_${ZAP_VERSION}" // Full path to ZAP installation
         
-        // Correct download URL for ZAP 2.14.0 from the archive
-        // If you switch to ZAP_VERSION = "2.16.1", use: "[https://github.com/zaproxy/zaproxy/releases/download/v$](https://github.com/zaproxy/zaproxy/releases/download/v$){ZAP_VERSION}/ZAP_${ZAP_VERSION}_Linux.tar.gz"
-        ZAP_DOWNLOAD_URL = "https://github.com/zaproxy/zap-archive/releases/download/zap-v$(https://github.com/zaproxy/zap-archive/releases/download/zap-v$){ZAP_VERSION}/ZAP_${ZAP_VERSION}_Linux.tar.gz"
+        // *******************************************************************
+        // IMPORTANT: Copy this line EXACTLY. No [ ] or ( ) around the URL.
+        // *******************************************************************
+        ZAP_DOWNLOAD_URL = "https://github.com/zaproxy/zap-archive/releases/download/zap-v${ZAP_VERSION}/ZAP_${ZAP_VERSION}_Linux.tar.gz"
+        // If you switch to ZAP_VERSION = "2.16.1", use this instead:
+        // ZAP_DOWNLOAD_URL = "https://github.com/zaproxy/zaproxy/releases/download/v${ZAP_VERSION}/ZAP_${ZAP_VERSION}_Linux.tar.gz"
         ZAP_TAR_GZ = "${ZAP_BASE_DIR}/ZAP_${ZAP_VERSION}_Linux.tar.gz"
         ZAP_HOME = "${WORKSPACE}/${ZAP_INSTALL_DIR}" // Where ZAP will be extracted
     }
@@ -21,14 +24,12 @@ pipeline {
     stages {
         stage('Declarative: Checkout SCM') {
             steps {
-                // This step typically uses the SCM configuration from the Jenkins job itself.
                 checkout scm
             }
         }
 
         stage('Checkout Code') {
             steps {
-                // Explicit checkout for pipeline script
                 git url: 'git@github.com:CodeInsightAcademy/JenkinsTest1.git', branch: 'main'
             }
         }
@@ -51,47 +52,11 @@ pipeline {
         stage('Deploy App Locally') {
             steps {
                 echo "Killing existing gunicorn processes (if any)..."
-                sh "pkill -f \"gunicorn\" || true" // Use || true to prevent failure if no process is found
+                sh "pkill -f \"gunicorn\" || true"
                 echo "Starting application locally with gunicorn..."
                 sh "nohup . ${env.VENV_DIR}/bin/activate && gunicorn --bind 0.0.0.0:${env.APP_PORT} app:app > app.log 2>&1 &"
             }
         }
-
-        // Uncomment the following stages if you want to include SCA and SAST scans
-        // stage('SCA Scan (Dependency-Check)') {
-        //     steps {
-        //         sh '''
-        //         /opt/dependency-check/bin/dependency-check.sh \\
-        //         --scan . \\
-        //         --format HTML \\
-        //         --project MovieRecommender \\
-        //         --out . \\
-        //         --failOnCVSS 8
-        //         '''
-        //     }
-        //     post {
-        //         always {
-        //             archiveArtifacts artifacts: 'dependency-check-report.html', fingerprint: true
-        //         }
-        //         failure {
-        //             echo 'Dependency-Check scan failed or found vulnerabilities!'
-        //         }
-        //     }
-        // }
-
-        // stage('SAST Scan (Bandit)') {
-        //     steps {
-        //         sh ". ${env.VENV_DIR}/bin/activate && bandit -r . -f json -o bandit_report.json --severity-level medium"
-        //     }
-        //     post {
-        //         always {
-        //             archiveArtifacts artifacts: '**/bandit_report.json', fingerprint: true
-        //         }
-        //         failure {
-        //             echo 'Bandit SAST scan failed or found vulnerabilities!'
-        //         }
-        //     }
-        // }
 
         stage('Unit Tests') {
             steps {
@@ -109,14 +74,13 @@ pipeline {
             steps {
                 echo "Ensuring no gunicorn and starting Flask dev server for DAST scan..."
                 sh "pkill -f gunicorn || true"
-                sh "nohup python3 app.py &" // Start Flask development server
+                sh "nohup python3 app.py &"
                 echo "Waiting 10 seconds for Flask app to start..."
                 sleep 10
                 echo "Verifying Flask app is running at ${APP_URL}..."
                 sh "curl --fail ${APP_URL}"
                 echo "App is running for DAST scan!"
             }
-            // No post cleanup here; app needs to stay up for the DAST scan stage
         }
 
         stage('DAST Scan (OWASP ZAP)') {
@@ -124,37 +88,38 @@ pipeline {
                 echo "Starting DAST Scan on ${APP_URL}"
 
                 // --- ZAP Installation (download and extract if not present) ---
-                script { // Using script block for Groovy logic (fileExists)
+                script {
                     sh "mkdir -p ${env.ZAP_BASE_DIR}"
                     if (!fileExists("${env.ZAP_HOME}/zap.sh")) {
                         echo "Downloading and extracting OWASP ZAP ${env.ZAP_VERSION}..."
                         sh "wget --no-verbose ${env.ZAP_DOWNLOAD_URL} -O ${env.ZAP_TAR_GZ}"
                         sh "tar -xzf ${env.ZAP_TAR_GZ} -C ${env.ZAP_BASE_DIR}"
-                        sh "rm ${env.ZAP_TAR_GZ}" // Clean up the tarball
+                        sh "rm ${env.ZAP_TAR_GZ}"
                     } else {
                         echo "OWASP ZAP ${env.ZAP_VERSION} already extracted."
                     }
                 }
 
                 // --- Install zap-cli into the virtual environment ---
-                echo "Checking connectivity to PyPI for zap-cli (via curl for diagnostics)..."
-                // Using a direct sh command for curl to simplify shell parsing
-                sh "curl -v --max-time 30 [https://pypi.org/simple/zap-cli/](https://pypi.org/simple/zap-cli/)"
-                
-                echo "Attempting to install a common package (requests) to test general PyPI access..."
-                sh ". ${env.VENV_DIR}/bin/activate && pip install --no-cache-dir --index-url [https://pypi.org/simple/](https://pypi.org/simple/) --verbose requests"
-                
-                echo "Attempting to install zap-cli..."
-                sh ". ${env.VENV_DIR}/bin/activate && pip install --no-cache-dir --index-url [https://pypi.org/simple/](https://pypi.org/simple/) --verbose zap-cli"
+                script {
+                    echo "Checking connectivity to PyPI for zap-cli (via curl for diagnostics)..."
+                    sh "curl -v --max-time 30 https://pypi.org/simple/zap-cli/"
+                    
+                    echo "Attempting to install a common package (requests) to test general PyPI access..."
+                    sh ". ${env.VENV_DIR}/bin/activate && pip install --no-cache-dir --index-url https://pypi.org/simple/ --verbose requests"
+                    
+                    echo "Attempting to install zap-cli..."
+                    sh ". ${env.VENV_DIR}/bin/activate && pip install --no-cache-dir --index-url https://pypi.org/simple/ --verbose zap-cli"
+                }
 
                 // --- Start ZAP in Daemon Mode ---
                 echo "Starting ZAP daemon..."
                 sh "nohup ${env.ZAP_HOME}/zap.sh -daemon -port 8080 -host 0.0.0.0 -config api.disablekey=true > zap_daemon.log 2>&1 &"
 
                 // --- Wait for ZAP daemon to start and be ready ---
-                script { // Using script block for Groovy control flow (while loop, timeout)
+                script {
                     def zapReady = false
-                    timeout(time: 2, unit: 'MINUTES') { // Max 2 minutes wait
+                    timeout(time: 2, unit: 'MINUTES') {
                         while (!zapReady) {
                             try {
                                 echo "Checking ZAP API endpoint (http://localhost:8080/JSON/core/view/version/)..."
@@ -180,21 +145,19 @@ pipeline {
             post {
                 always {
                     script {
-                        // --- Shutdown ZAP Daemon ---
                         echo "Shutting down ZAP daemon..."
-                        sh "pkill -f 'zap.sh' || true" // Robust way to kill ZAP processes
-                        sleep 5 // Give ZAP a moment to shut down cleanly
+                        sh "pkill -f 'zap.sh' || true"
+                        sleep 5
 
-                        // --- Kill the Flask App (started in 'Deploy App for DAST' stage) ---
                         echo "Killing Flask app processes on port ${env.APP_PORT}..."
                         def appPidsOutput = sh(script: "lsof -t -i :${env.APP_PORT}", returnStdout: true).trim().replaceAll('\r', '')
-                        def appPidsList = appPidsOutput.split('\\s+').findAll { it.trim() != "" } // Split and filter empty strings
+                        def appPidsList = appPidsOutput.split('\\s+').findAll { it.trim() != "" }
 
                         if (appPidsList) {
                             echo "Found PIDs: ${appPidsList.join(' ')}"
                             for (pid in appPidsList) {
                                 if (pid.isInteger()) {
-                                    sh "kill ${pid} || true" // Use || true to prevent individual kill failure from breaking the loop
+                                    sh "kill ${pid} || true"
                                 } else {
                                     echo "Warning: '${pid}' is not a valid PID. Skipping."
                                 }
