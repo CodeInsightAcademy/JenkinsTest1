@@ -12,11 +12,11 @@ pipeline {
         ZAP_INSTALL_DIR = "${ZAP_BASE_DIR}/ZAP_${ZAP_VERSION}" // Full path to ZAP installation
         
         // *******************************************************************
-        // IMPORTANT: These URLs are now Groovy strings. The markdown link issue
-        // should be completely avoided by defining them outside the `sh` command.
+        // IMPORTANT: These URLs are now Groovy strings defined once.
+        // Their usage in 'sh' commands will be carefully constructed.
         // *******************************************************************
         ZAP_DOWNLOAD_URL = "https://github.com/zaproxy/zap-archive/releases/download/zap-v${ZAP_VERSION}/ZAP_${ZAP_VERSION}_Linux.tar.gz"
-        PYPI_SIMPLE_URL = "[https://pypi.org/simple/](https://pypi.org/simple/)" // Generic PyPI Simple Index URL
+        PYPI_SIMPLE_URL = "https://pypi.org/simple/" // Generic PyPI Simple Index URL
         ZAP_API_VERSION_URL = "http://localhost:8080/JSON/core/view/version/" // ZAP API endpoint for status check
 
         ZAP_TAR_GZ = "${ZAP_BASE_DIR}/ZAP_${ZAP_VERSION}_Linux.tar.gz"
@@ -81,8 +81,11 @@ pipeline {
                 echo "Waiting 10 seconds for Flask app to start..."
                 sleep 10
                 echo "Verifying Flask app is running at ${env.APP_URL}..."
-                // Use the Groovy variable directly
-                sh "curl --fail ${env.APP_URL}"
+                // Use String.format for curl URL to explicitly handle potential parsing issues
+                script {
+                    def curl_command = String.format("curl --fail %s", env.APP_URL)
+                    sh "${curl_command}"
+                }
                 echo "App is running for DAST scan!"
             }
         }
@@ -96,8 +99,9 @@ pipeline {
                     sh "mkdir -p ${env.ZAP_BASE_DIR}"
                     if (!fileExists("${env.ZAP_HOME}/zap.sh")) {
                         echo "Downloading and extracting OWASP ZAP ${env.ZAP_VERSION}..."
-                        // Use Groovy variable directly
-                        sh "wget --no-verbose ${env.ZAP_DOWNLOAD_URL} -O ${env.ZAP_TAR_GZ}"
+                        // Use String.format for wget URL
+                        def wget_command = String.format("wget --no-verbose %s -O %s", env.ZAP_DOWNLOAD_URL, env.ZAP_TAR_GZ)
+                        sh "${wget_command}"
                         sh "tar -xzf ${env.ZAP_TAR_GZ} -C ${env.ZAP_BASE_DIR}"
                         sh "rm ${env.ZAP_TAR_GZ}"
                     } else {
@@ -111,16 +115,16 @@ pipeline {
                     sh ". ${env.VENV_DIR}/bin/activate"
 
                     echo "Checking connectivity to PyPI for zap-cli (via curl for diagnostics)..."
-                    // Use the Groovy variable for the URL
-                    sh "curl -v --max-time 30 ${env.PYPI_SIMPLE_URL}zap-cli/"
+                    // Use String.format to ensure the URL is a clean string for curl
+                    def curl_pypi_command = String.format("curl -v --max-time 30 %s%s", env.PYPI_SIMPLE_URL, "zap-cli/")
+                    sh "${curl_pypi_command}"
                     
                     echo "Attempting to install a common package (requests) to test general PyPI access..."
-                    // Use the Groovy variable for the index-url
-                    sh "pip install --no-cache-dir --index-url ${env.PYPI_SIMPLE_URL} --verbose requests"
+                    // Simplified pip install, relying on activated venv
+                    sh "pip install --no-cache-dir --verbose requests"
                     
                     echo "Attempting to install zap-cli..."
-                    // Use the Groovy variable for the index-url
-                    sh "pip install --no-cache-dir --index-url ${env.PYPI_SIMPLE_URL} --verbose zap-cli"
+                    sh "pip install --no-cache-dir --verbose zap-cli"
                 }
 
                 // --- Start ZAP in Daemon Mode ---
@@ -134,8 +138,9 @@ pipeline {
                         while (!zapReady) {
                             try {
                                 echo "Checking ZAP API endpoint (${env.ZAP_API_VERSION_URL})..."
-                                // Use the Groovy variable for the ZAP API URL
-                                sh "curl --fail --silent ${env.ZAP_API_VERSION_URL}"
+                                // Use String.format for ZAP API URL
+                                def curl_zap_api_command = String.format("curl --fail --silent %s", env.ZAP_API_VERSION_URL)
+                                sh "${curl_zap_api_command}"
                                 zapReady = true
                                 echo "ZAP daemon is ready."
                             } catch (e) {
