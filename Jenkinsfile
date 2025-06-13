@@ -108,7 +108,6 @@ pipeline {
             steps {
                 sh '''
                     . venv/bin/activate
-                    # Starting the app in the background for DAST scan
                     nohup python3 app.py &
                     sleep 10
                     curl --fail http://localhost:5000/
@@ -118,10 +117,13 @@ pipeline {
             post {
                 always {
                     script {
-                        def pids = sh(script: 'lsof -t -i :5000', returnStdout: true).trim()
+                        def pidsOutput = sh(script: 'lsof -t -i :5000', returnStdout: true).trim()
+                        // Replace newlines with spaces to get a single string of space-separated PIDs
+                        def pids = pidsOutput.replaceAll('\\n', ' ')
+        
                         if (pids) {
                             echo "Killing process(es) on port 5000: ${pids}"
-                            // This command will pass each PID from 'pids' as an argument to 'kill'
+                            // Now, 'pids' will be "7312 7314" (or similar), which 'kill' handles correctly
                             sh "kill ${pids}"
                         } else {
                             echo "No process found on port 5000 to kill."
