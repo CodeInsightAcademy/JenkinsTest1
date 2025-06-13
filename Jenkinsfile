@@ -132,7 +132,11 @@ pipeline {
                     sh 'curl -v --max-time 30 https://pypi.org/simple/zap-cli/'
                     
                     echo "Attempting to install zap-cli..."
-                    sh '. venv/bin/activate && pip install zap-cli'
+                    // IMPORTANT CHANGES HERE:
+                    // --no-cache-dir: Prevents pip from using local cached metadata, forcing a fresh download.
+                    // --index-url https://pypi.org/simple/: Explicitly tells pip to use the standard PyPI index.
+                    // --verbose: Provides more detailed output from pip during the installation attempt.
+                    sh '. venv/bin/activate && pip install --no-cache-dir --index-url https://pypi.org/simple/ --verbose zap-cli'
                 }
 
                 // --- Install zap-cli into the virtual environment ---
