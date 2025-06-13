@@ -35,7 +35,9 @@ pipeline {
                         --scan . \\
                         --format HTML \\
                         --project "MovieRecommender" \\
-                        --out "${DEPENDENCY_CHECK_REPORT_PATH}"
+                        --out "${DEPENDENCY_CHECK_REPORT_PATH}" \\
+                        --data "${WORKSPACE}/.dependency-check-data" \\
+                        --temp "${WORKSPACE}/.dependency-check-temp"
                     """
                 }
                 post {
@@ -47,7 +49,6 @@ pipeline {
                     }
                 }
             }
-
         stage('SAST Scan (Bandit)') {
             steps {
                 sh '. venv/bin/activate && bandit -r . -f json -o "${BANDIT_REPORT_PATH}" --severity-level M'
