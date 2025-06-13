@@ -92,7 +92,10 @@ pipeline {
 
         stage('Unit Tests') {
             steps {
-                sh '. venv/bin/activate && pytest test_app.py'
+                sh '''#!/bin/bash
+                source venv/bin/activate
+                pytest
+                '''
             }
             post {
                 failure {
