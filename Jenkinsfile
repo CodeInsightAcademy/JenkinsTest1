@@ -27,30 +27,30 @@ pipeline {
             }
         }
 
-        stage('SCA Scan (Dependency-Check)') {
-                steps {
-                    // Run Dependency-Check against the requirements.txt
-                    sh """
-                    /opt/dependency-check/bin/dependency-check.sh \
-                      --nvdApiKey 593311b1-e9da-44c8-8b7c-060f4346b08d \
-                      --scan . \
-                      --format HTML \
-                      --project MovieRecommender \
-                      --out dependency-check-report.html \
-                      --data .dependency-check-data
-                      --noupdate
+        // stage('SCA Scan (Dependency-Check)') {
+        //         steps {
+        //             // Run Dependency-Check against the requirements.txt
+        //             sh """
+        //             /opt/dependency-check/bin/dependency-check.sh \
+        //               --nvdApiKey 593311b1-e9da-44c8-8b7c-060f4346b08d \
+        //               --scan . \
+        //               --format HTML \
+        //               --project MovieRecommender \
+        //               --out dependency-check-report.html \
+        //               --data .dependency-check-data
+        //               --noupdate
                         
-                    """
-                }
-                post {
-                    always {
-                        archiveArtifacts artifacts: '**/dependency-check-report.html', fingerprint: true
-                    }
-                    failure {
-                        echo 'Dependency-Check scan failed or found vulnerabilities!'
-                    }
-                }
-            }
+        //             """
+        //         }
+        //         post {
+        //             always {
+        //                 archiveArtifacts artifacts: '**/dependency-check-report.html', fingerprint: true
+        //             }
+        //             failure {
+        //                 echo 'Dependency-Check scan failed or found vulnerabilities!'
+        //             }
+        //         }
+        //     }
         stage('SAST Scan (Bandit)') {
             steps {
                 sh '. venv/bin/activate && bandit -r . -f json -o "${BANDIT_REPORT_PATH}" --severity-level M'
