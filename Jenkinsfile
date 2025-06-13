@@ -97,19 +97,24 @@ pipeline {
                         sh "wget --no-verbose ${env.ZAP_DOWNLOAD_URL} -O ${env.ZAP_TAR_GZ}"
                         sh "tar -xzf ${env.ZAP_TAR_GZ} -C ${env.ZAP_BASE_DIR}"
                         sh "rm ${env.ZAP_TAR_GZ}"
+                        // Ensure zap.sh is executable after extraction
+                        sh "chmod +x ${env.ZAP_HOME}/zap.sh"
                     } else {
                         echo "OWASP ZAP ${env.ZAP_VERSION} already extracted."
                     }
                 }
 
                 // --- Start ZAP in Daemon Mode ---
+                echo "Checking if port 8080 is already in use before starting ZAP..."
+                sh "lsof -i :8080 || echo 'Port 8080 is free or lsof not available/working.'" // Check port
                 echo "Starting ZAP daemon..."
+                // Redirect ZAP's stdout/stderr to a log file for debugging
                 sh "nohup ${env.ZAP_HOME}/zap.sh -daemon -port 8080 -host 0.0.0.0 -config api.disablekey=true > zap_daemon.log 2>&1 &"
 
                 // --- Wait for ZAP daemon to start and be ready ---
                 script {
                     def zapReady = false
-                    timeout(time: 2, unit: 'MINUTES') {
+                    timeout(time: 5, unit: 'MINUTES') { // Increased timeout to 5 minutes
                         while (!zapReady) {
                             try {
                                 echo "Checking ZAP API endpoint (${env.ZAP_API_VERSION_URL})..."
@@ -127,7 +132,7 @@ pipeline {
                 // --- Trigger ZAP Active Scan via API ---
                 echo "Triggering ZAP active scan on ${env.APP_URL} via API..."
                 script {
-                    sh "curl ${env.ZAP_ASCSAN_API}?url=${env.APP_URL}&recurse=true"
+                    sh "curl \"${env.ZAP_ASCSAN_API}?url=${env.APP_URL}&recurse=true\"" // Ensure URL is quoted
                 }
 
                 // --- Wait for ZAP Active Scan to complete ---
@@ -136,17 +141,33 @@ pipeline {
                     def scanComplete = false
                     timeout(time: 5, unit: 'MINUTES') { // Max 5 minutes for scan
                         while (!scanComplete) {
-                            def status = sh(script: "curl -s http://localhost:8080/JSON/ascan/view/status/?scanId=0", returnStdout: true).trim()
-                            if (status.contains('"status":"-1"')) { // -1 means no scan running or finished
-                                echo "ZAP active scan started (status -1 indicates it's processing or finished if no scanId specified)."
-                                scanComplete = true // Assume it finished if ZAP reports no active scan with scanId 0
-                            } else if (status.contains('"status":"100"')) {
+                            // Check status of scanId 0 (latest scan)
+                            def statusJson = sh(script: "curl -s http://localhost:8080/JSON/ascan/view/status/?scanId=0", returnStdout: true).trim()
+                            
+                            // Parse JSON to get status, fallback to -1 if parsing fails
+                            def status = -1
+                            try {
+                                def jsonSlurper = new groovy.json.JsonSlurper()
+                                def parsedJson = jsonSlurper.parseText(statusJson)
+                                if (parsedJson && parsedJson.status) {
+                                    status = parsedJson.status.toInteger()
+                                }
+                            } catch (e) {
+                                echo "Could not parse ZAP scan status JSON: ${statusJson}. Error: ${e.message}"
+                            }
+
+                            if (status == 100) {
                                 echo "ZAP active scan 100% complete."
                                 scanComplete = true
-                            } else {
-                                echo "ZAP active scan progress: ${status.split('"status":"')[1].split('"')[0]}%"
+                            } else if (status == -1) {
+                                echo "ZAP active scan started (status -1 might indicate it's processing or finished if no scanId specified, or an error). Will recheck."
                                 sleep 15
                             }
+                             else {
+                                echo "ZAP active scan progress: ${status}%"
+                                sleep 15
+                            }
+                            // If scan is still running after timeout, it will be aborted by the outer timeout
                         }
                     }
                 }
@@ -154,9 +175,9 @@ pipeline {
                 // --- Generate HTML Report via API ---
                 echo "Generating ZAP HTML report..."
                 script {
-                    sh "curl -s -o target/zap-reports/zap-report.html ${env.ZAP_REPORT_API}?formMethod=GET&form=htmlreport"
-                    sh "mkdir -p target/zap-reports" // Ensure directory exists if it didn't already
-                    sh "curl -s -o target/zap-reports/zap-report.html \"${env.ZAP_REPORT_API}?formMethod=GET&form=htmlreport\""
+                    sh "mkdir -p target/zap-reports" // Ensure directory exists
+                    // Use a temporary file for curl output to avoid issues with large reports
+                    sh "curl -s \"${env.ZAP_REPORT_API}?formMethod=GET&form=htmlreport\" > target/zap-reports/zap-report.html"
                 }
             }
             post {
@@ -165,6 +186,9 @@ pipeline {
                         echo "Shutting down ZAP daemon..."
                         sh "pkill -f 'zap.sh' || true"
                         sleep 5
+
+                        echo "Checking if port 8080 is still in use after ZAP shutdown..."
+                        sh "lsof -i :8080 || echo 'Port 8080 is free after ZAP shutdown or lsof not available/working.'" // Check port
 
                         echo "Killing Flask app processes on port ${env.APP_PORT}..."
                         def appPids = sh(script: "lsof -t -i :${env.APP_PORT}", returnStdout: true).trim().split('\\s+')
@@ -185,9 +209,15 @@ pipeline {
                     }
                     archiveArtifacts artifacts: 'target/zap-reports/**/*.html', allowEmptyArchive: true
                     echo "ZAP DAST scan completed and application cleaned up."
+
+                    // If ZAP didn't start or completed with errors, its logs will be here:
+                    if (fileExists("zap_daemon.log")) {
+                        echo "Archiving ZAP daemon log for inspection..."
+                        archiveArtifacts artifacts: 'zap_daemon.log', onlyIfSuccessful: false
+                    }
                 }
                 failure {
-                    echo "ZAP DAST scan detected vulnerabilities or failed to complete successfully!"
+                    echo "ZAP DAST scan detected vulnerabilities or failed to complete successfully! Check zap_daemon.log for details."
                 }
             }
         }
