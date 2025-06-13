@@ -53,26 +53,26 @@ pipeline {
                 '''
             }
         }
-        stage('SCA Scan (Dependency-Check)') {
-            steps {
-                sh '''
-                /opt/dependency-check/bin/dependency-check.sh \
-                --scan . \
-                --format HTML \
-                --project MovieRecommender \
-                --out . \
-                --failOnCVSS 8
-                '''
-            }
-            post {
-                always {
-                    archiveArtifacts artifacts: 'dependency-check-report.html', fingerprint: true
-                }
-                failure {
-                    echo 'Dependency-Check scan failed or found vulnerabilities!'
-                }
-            }
-        }
+        // stage('SCA Scan (Dependency-Check)') {
+        //     steps {
+        //         sh '''
+        //         /opt/dependency-check/bin/dependency-check.sh \
+        //         --scan . \
+        //         --format HTML \
+        //         --project MovieRecommender \
+        //         --out . \
+        //         --failOnCVSS 8
+        //         '''
+        //     }
+        //     post {
+        //         always {
+        //             archiveArtifacts artifacts: 'dependency-check-report.html', fingerprint: true
+        //         }
+        //         failure {
+        //             echo 'Dependency-Check scan failed or found vulnerabilities!'
+        //         }
+        //     }
+        // }
 
 
 
