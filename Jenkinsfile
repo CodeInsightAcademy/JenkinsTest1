@@ -6,6 +6,7 @@ pipeline {
         APP_PORT = '5000'
         VENV_DIR = 'venv'
         ZAP_REPORT_PATH = "${WORKSPACE}/zap_report.html"
+        
         DEPENDENCY_CHECK_REPORT_PATH = "${WORKSPACE}/dependency-check-report.html"
         BANDIT_REPORT_PATH = "${WORKSPACE}/bandit_report.json"
     }
@@ -145,7 +146,7 @@ pipeline {
             }
             post {
                 always {
-                    archiveArtifacts artifacts: 'target/zap-reports/**/*.html', allowEmpty: true
+                    archiveArtifacts artifacts: 'target/zap-reports/**/*.html', allowEmptyArchive: true
                     // You might want to evaluate the ZAP report here to determine success/failure
                     // For now, it echoes a failure message as per your log.
                     echo "ZAP DAST scan completed." // Change this to reflect success if no vulnerabilities
