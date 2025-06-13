@@ -104,25 +104,27 @@ pipeline {
             }
         }
 
-        stage('Deploy App for DAST') {
+       stage('Deploy App for DAST') {
             steps {
                 sh '''
-                    . venv/bin/activate # <--- ACTIVATE VIRTUAL ENV HERE
-                    nohup python3 app.py & # Ensure it's truly backgrounded
+                    . venv/bin/activate
+                    # Starting the app in the background for DAST scan
+                    nohup python3 app.py &
                     sleep 10
-                    curl --fail http://localhost:5000/ # Check if the app is actually running
+                    curl --fail http://localhost:5000/
                     echo "App is running for DAST scan!"
                 '''
             }
             post {
                 always {
                     script {
-                        def pids = sh(script: "lsof -t -i :5000 || echo ''", returnStdout: true).trim()
+                        def pids = sh(script: 'lsof -t -i :5000', returnStdout: true).trim()
                         if (pids) {
-                            echo "Killing process on port 5000: ${pids}"
+                            echo "Killing process(es) on port 5000: ${pids}"
+                            // This command will pass each PID from 'pids' as an argument to 'kill'
                             sh "kill ${pids}"
                         } else {
-                            echo "No process found on port 5000."
+                            echo "No process found on port 5000 to kill."
                         }
                     }
                 }
