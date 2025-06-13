@@ -124,20 +124,15 @@ pipeline {
                 echo "Starting DAST Scan on ${APP_URL}"
 
                 // --- ZAP Installation (download and extract if not present) ---
-                script {
-                    sh '''
-                        # Removed #!/bin/bash and -o pipefail for compatibility
-                        set -eux
-                        mkdir -p ''' + env.ZAP_BASE_DIR + '''
-                        if [ ! -f "''' + env.ZAP_HOME + '''/zap.sh" ]; then
-                            echo "Downloading and extracting OWASP ZAP ''' + env.ZAP_VERSION + '''..."
-                            wget --no-verbose ''' + env.ZAP_DOWNLOAD_URL + ''' -O ''' + env.ZAP_TAR_GZ + '''
-                            tar -xzf ''' + env.ZAP_TAR_GZ + ''' -C ''' + env.ZAP_BASE_DIR + '''
-                            rm ''' + env.ZAP_TAR_GZ + ''' # Clean up the tarball
-                        else
-                            echo "OWASP ZAP ''' + env.ZAP_VERSION + ''' already extracted."
-                        fi
-                    '''
+               script {
+                    echo "Checking connectivity to PyPI before installing zap-cli..."
+                    // This curl command attempts to fetch the simple index for zap-cli from PyPI.
+                    // The -v (verbose) flag will show connection details, redirects, and potential proxy issues.
+                    // --max-time 30 will ensure it doesn't hang indefinitely.
+                    sh 'curl -v --max-time 30 https://pypi.org/simple/zap-cli/'
+                    
+                    echo "Attempting to install zap-cli..."
+                    sh '. venv/bin/activate && pip install zap-cli'
                 }
 
                 // --- Install zap-cli into the virtual environment ---
