@@ -38,6 +38,7 @@ pipeline {
                       --project MovieRecommender \
                       --out dependency-check-report.html \
                       --data .dependency-check-data
+                      --noupdate
                         
                     """
                 }
