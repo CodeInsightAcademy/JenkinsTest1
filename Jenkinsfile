@@ -20,7 +20,7 @@ pipeline {
         ZAP_ASCSAN_API = "http://localhost:${ZAP_PORT}/JSON/ascan/action/scan/" // ZAP Active Scan API endpoint
         ZAP_REPORT_API = "http://localhost:${ZAP_PORT}/JSON/core/action/htmlreport/" // ZAP Report API endpoint
 
-        ZAP_TAR_GZ = "${ZAP_BASE_DIR}/ZAP_${ZAP_VERSION}_Linux.tar.gz"
+        ZAP_TAR_GZ = "${ZAP_BASE_BASE}/ZAP_${ZAP_VERSION}_Linux.tar.gz"
         ZAP_HOME = "${WORKSPACE}/${ZAP_INSTALL_DIR}" // Where ZAP will be extracted
     }
 
@@ -134,12 +134,18 @@ pipeline {
                 echo "Triggering ZAP spider (crawl) on ${env.APP_URL} via API..."
                 script {
                     def spiderResponse = sh(script: "curl -s \"${env.ZAP_SPIDER_API}?url=${env.APP_URL}&recurse=true\"", returnStdout: true).trim()
-                    // FIX: Clone the parsed response to make it serializable
-                    def parsedResponse = new groovy.json.JsonSlurper().parseText(spiderResponse).clone()
-                    def spiderId = parsedResponse.scan // ZAP spider API returns scan ID as 'scan'
+                    echo "Raw ZAP Spider API Response: ${spiderResponse}" // DEBUGGING LINE
+                    
+                    def parsedResponse
+                    try {
+                        parsedResponse = new groovy.json.JsonSlurper().parseText(spiderResponse).clone()
+                    } catch (e) {
+                        error "Failed to parse ZAP Spider API response as JSON: ${spiderResponse}. Error: ${e.message}"
+                    }
 
-                    if (!spiderId) {
-                        error "Failed to start ZAP spider. Response: ${spiderResponse}"
+                    def spiderId = parsedResponse?.scan // Safe navigation operator
+                    if (spiderId == null) {
+                        error "ZAP Spider API response did not contain a 'scan' ID. Response: ${spiderResponse}"
                     }
                     echo "ZAP spider started with ID: ${spiderId}"
 
@@ -151,7 +157,6 @@ pipeline {
                             
                             def status = -1
                             try {
-                                // FIX: Clone the parsed JSON status to make it serializable
                                 def parsedJson = new groovy.json.JsonSlurper().parseText(statusJson).clone()
                                 if (parsedJson && parsedJson.status) {
                                     status = parsedJson.status.toInteger()
@@ -175,12 +180,18 @@ pipeline {
                 echo "Triggering ZAP active scan on ${env.APP_URL} via API..."
                 script {
                     def ascanResponse = sh(script: "curl -s \"${env.ZAP_ASCSAN_API}?url=${env.APP_URL}&recurse=true\"", returnStdout: true).trim()
-                    // FIX: Clone the parsed response to make it serializable
-                    def parsedResponse = new groovy.json.JsonSlurper().parseText(ascanResponse).clone()
-                    def ascanId = parsedResponse.scan // ZAP ascan API returns scan ID as 'scan'
+                    echo "Raw ZAP Active Scan API Response: ${ascanResponse}" // DEBUGGING LINE
 
-                    if (!ascanId) {
-                        error "Failed to start ZAP active scan. Response: ${ascanResponse}"
+                    def parsedResponse
+                    try {
+                        parsedResponse = new groovy.json.JsonSlurper().parseText(ascanResponse).clone()
+                    } catch (e) {
+                        error "Failed to parse ZAP Active Scan API response as JSON: ${ascanResponse}. Error: ${e.message}"
+                    }
+                    
+                    def ascanId = parsedResponse?.scan // Safe navigation operator
+                    if (ascanId == null) {
+                        error "ZAP Active Scan API response did not contain a 'scan' ID. Response: ${ascanResponse}"
                     }
                     echo "ZAP active scan started with ID: ${ascanId}"
 
@@ -192,7 +203,6 @@ pipeline {
                             
                             def status = -1
                             try {
-                                // FIX: Clone the parsed JSON status to make it serializable
                                 def parsedJson = new groovy.json.JsonSlurper().parseText(statusJson).clone()
                                 if (parsedJson && parsedJson.status) {
                                     status = parsedJson.status.toInteger()
