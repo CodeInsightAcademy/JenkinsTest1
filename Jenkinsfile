@@ -12,7 +12,7 @@ pipeline {
         ZAP_VERSION = "2.14.0" // Specify the ZAP version to download
         ZAP_BASE_DIR = "zap" // Directory to store ZAP
         ZAP_INSTALL_DIR = "${ZAP_BASE_DIR}/ZAP_${ZAP_VERSION}" // Full path to ZAP installation
-        ZAP_DOWNLOAD_URL = "https://github.com/zaproxy/zaproxy/releases/download/v${ZAP_VERSION}/ZAP_${ZAP_VERSION}_Linux.tar.gz"
+        ZAP_DOWNLOAD_URL = "https://github.com/zaproxy/zap-archive/releases/download/zap-v${ZAP_VERSION}/ZAP_${ZAP_VERSION}_Linux.tar.gz"
         ZAP_TAR_GZ = "${ZAP_BASE_DIR}/ZAP_${ZAP_VERSION}_Linux.tar.gz"
         ZAP_HOME = "${WORKSPACE}/${ZAP_INSTALL_DIR}" // Where ZAP will be extracted
     }
@@ -133,16 +133,20 @@ pipeline {
                 echo "Starting DAST Scan on ${APP_URL}"
 
                 // --- ZAP Installation (download and extract if not present) ---
+                // --- ZAP Installation (download and extract if not present) ---
                 script {
-                    sh "mkdir -p ${env.ZAP_BASE_DIR}"
-                    if (!fileExists("${env.ZAP_HOME}/zap.sh")) {
-                        echo "Downloading and extracting OWASP ZAP ${env.ZAP_VERSION}..."
-                        sh "wget -q ${env.ZAP_DOWNLOAD_URL} -O ${env.ZAP_TAR_GZ}"
-                        sh "tar -xzf ${env.ZAP_TAR_GZ} -C ${env.ZAP_BASE_DIR}"
-                        sh "rm ${env.ZAP_TAR_GZ}" // Clean up the tarball
-                    } else {
-                        echo "OWASP ZAP ${env.ZAP_VERSION} already extracted."
-                    }
+                    sh '''
+                        set -euxo pipefail
+                        mkdir -p ''' + env.ZAP_BASE_DIR + '''
+                        if [ ! -f "''' + env.ZAP_HOME + '''/zap.sh" ]; then
+                            echo "Downloading and extracting OWASP ZAP ''' + env.ZAP_VERSION + '''..."
+                            wget --no-verbose ''' + env.ZAP_DOWNLOAD_URL + ''' -O ''' + env.ZAP_TAR_GZ + '''
+                            tar -xzf ''' + env.ZAP_TAR_GZ + ''' -C ''' + env.ZAP_BASE_DIR + '''
+                            rm ''' + env.ZAP_TAR_GZ + ''' # Clean up the tarball
+                        else
+                            echo "OWASP ZAP ''' + env.ZAP_VERSION + ''' already extracted."
+                        fi
+                    '''
                 }
 
                 // --- Install zap-cli into the virtual environment ---
