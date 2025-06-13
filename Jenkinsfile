@@ -53,7 +53,7 @@ pipeline {
         //     }
         stage('SAST Scan (Bandit)') {
             steps {
-                sh '. venv/bin/activate && bandit -r . -f json -o "${BANDIT_REPORT_PATH}" --severity-level M'
+                sh '. venv/bin/activate && bandit -r . -f json -o bandit_report.json --severity-level medium'
                 // -r . : recursive scan from current directory
                 // -f json : output in JSON format
                 // -o : output file
