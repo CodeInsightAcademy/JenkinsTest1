@@ -107,10 +107,11 @@ pipeline {
         stage('Deploy App for DAST') {
             steps {
                 sh '''
-                    nohup python3 app.py & # Add '&' to truly background it, if app.py doesn't do it itself
+                    . venv/bin/activate # <--- ACTIVATE VIRTUAL ENV HERE
+                    nohup python3 app.py & # Ensure it's truly backgrounded
                     sleep 10
-                    curl --fail http://localhost:5000/ # Assuming your app serves on / route
-                    echo "App is running!"
+                    curl --fail http://localhost:5000/ # Check if the app is actually running
+                    echo "App is running for DAST scan!"
                 '''
             }
             post {
