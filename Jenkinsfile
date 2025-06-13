@@ -56,16 +56,17 @@ pipeline {
         stage('SCA Scan (Dependency-Check)') {
             steps {
                 // Run Dependency-Check against the requirements.txt
-                sh """
-                docker run --rm \
-                -v $(pwd):/src \
-                owasp/dependency-check \
-                --scan /src \
-                --format HTML \
-                --project MovieRecommender \
-                --out /src \
-                --failOnCVSS 8
-                """
+                sh sh '''
+                    docker run --rm \
+                    -v $(pwd):/src \
+                    owasp/dependency-check \
+                    --scan /src \
+                    --format HTML \
+                    --project MovieRecommender \
+                    --out /src \
+                    --failOnCVSS 8
+                '''
+
                 // You might need to adjust the --disable options based on what languages you want to scan.
                 // For Python, you generally want to keep default enabled, but might disable others to speed up.
             }
