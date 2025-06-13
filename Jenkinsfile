@@ -144,8 +144,8 @@ pipeline {
                     }
 
                     def spiderId = parsedResponse?.scan 
-                    // FIX: Explicitly check for null or empty string, allowing '0' as a valid ID
-                    if (spiderId == null || spiderId.toString().isEmpty()) {
+                    // FIX: Only check for null, allow '0' as a valid ID
+                    if (spiderId == null) {
                         error "ZAP Spider API response did not contain a valid 'scan' ID. Response: ${spiderResponse}"
                     }
                     echo "ZAP spider started with ID: ${spiderId}"
@@ -191,8 +191,8 @@ pipeline {
                     }
                     
                     def ascanId = parsedResponse?.scan
-                    // FIX: Explicitly check for null or empty string, allowing '0' as a valid ID
-                    if (ascanId == null || ascanId.toString().isEmpty()) {
+                    // FIX: Only check for null, allow '0' as a valid ID
+                    if (ascanId == null) {
                         error "ZAP Active Scan API response did not contain a valid 'scan' ID. Response: ${ascanResponse}"
                     }
                     echo "ZAP active scan started with ID: ${ascanId}"
