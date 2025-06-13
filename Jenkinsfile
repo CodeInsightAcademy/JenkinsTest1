@@ -31,12 +31,13 @@ pipeline {
                 steps {
                     // Run Dependency-Check against the requirements.txt
                     sh """
-                    /opt/dependency-check/bin/dependency-check.sh \\
-                        --scan . \\
-                        --format HTML \\
-                        --project "MovieRecommender" \\
-                        --out "${DEPENDENCY_CHECK_REPORT_PATH}" \\
-                        --data "${WORKSPACE}/.dependency-check-data" \\
+                    /opt/dependency-check/bin/dependency-check.sh \
+                      --nvdApiKey YOUR_NVD_API_KEY \
+                      --scan . \
+                      --format HTML \
+                      --project MovieRecommender \
+                      --out dependency-check-report.html \
+                      --data .dependency-check-data
                         
                     """
                 }
