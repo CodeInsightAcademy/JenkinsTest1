@@ -106,9 +106,12 @@ pipeline {
 
         stage('Deploy App for DAST') {
             steps {
-                sh 'nohup python3 app.py > app.log 2>&1 &'
-                sh 'sleep 10'
-                sh 'curl --fail ${APP_URL} || (echo "App not running!" && exit 1)'
+                sh '''
+                    nohup python3 app.py & # Add '&' to truly background it, if app.py doesn't do it itself
+                    sleep 10
+                    curl --fail http://localhost:5000/ # Assuming your app serves on / route
+                    echo "App is running!"
+                '''
             }
             post {
                 always {
