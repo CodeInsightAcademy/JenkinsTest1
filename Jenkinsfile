@@ -77,7 +77,7 @@ pipeline {
                 echo "Waiting 10 seconds for Flask app to start..."
                 sleep 10
                 echo "Verifying Flask app is running at ${APP_URL}..."
-                sh "curl --fail ${APP_URL}"
+                sh "curl --fail \"${APP_URL}\"" // Quote APP_URL here as well for robustness
                 echo "App is running for DAST scan!"
             }
         }
@@ -91,7 +91,7 @@ pipeline {
                     sh "mkdir -p ${env.ZAP_BASE_DIR}"
                     if (!fileExists("${env.ZAP_HOME}/zap.sh")) {
                         echo "Downloading and extracting OWASP ZAP ${env.ZAP_VERSION}..."
-                        sh "wget --no-verbose ${env.ZAP_DOWNLOAD_URL} -O ${env.ZAP_TAR_GZ}"
+                        sh "wget --no-verbose \"${env.ZAP_DOWNLOAD_URL}\" -O ${env.ZAP_TAR_GZ}" // Quote download URL
                         sh "tar -xzf ${env.ZAP_TAR_GZ} -C ${env.ZAP_BASE_DIR}"
                         sh "rm ${env.ZAP_TAR_GZ}"
                     } else {
@@ -101,18 +101,17 @@ pipeline {
 
                 // --- Install zap-cli into the virtual environment ---
                 script {
-                    // Activate venv once for all pip commands in this script block
-                    sh ". ${env.VENV_DIR}/bin/activate"
+                    sh ". ${env.VENV_DIR}/bin/activate" // Activate venv once for subsequent commands in this script block
 
                     echo "Checking connectivity to PyPI for zap-cli (via curl for diagnostics)..."
-                    // IMPORTANT FIX: Wrap URL in single quotes to prevent shell syntax errors
-                    sh "curl -v --max-time 30 '[https://pypi.org/simple/zap-cli/](https://pypi.org/simple/zap-cli/)'"
+                    // IMPORTANT FIX: Use escaped double quotes for literal URLs in sh commands
+                    sh "curl -v --max-time 30 \"[https://pypi.org/simple/zap-cli/](https://pypi.org/simple/zap-cli/)\""
                     
                     echo "Attempting to install a common package (requests) to test general PyPI access..."
-                    sh "pip install --no-cache-dir --index-url '[https://pypi.org/simple/](https://pypi.org/simple/)' --verbose requests"
+                    sh "pip install --no-cache-dir --index-url \"[https://pypi.org/simple/](https://pypi.org/simple/)\" --verbose requests"
                     
                     echo "Attempting to install zap-cli..."
-                    sh "pip install --no-cache-dir --index-url '[https://pypi.org/simple/](https://pypi.org/simple/)' --verbose zap-cli"
+                    sh "pip install --no-cache-dir --index-url \"[https://pypi.org/simple/](https://pypi.org/simple/)\" --verbose zap-cli"
                 }
 
                 // --- Start ZAP in Daemon Mode ---
@@ -126,7 +125,7 @@ pipeline {
                         while (!zapReady) {
                             try {
                                 echo "Checking ZAP API endpoint (http://localhost:8080/JSON/core/view/version/)..."
-                                sh "curl --fail --silent 'http://localhost:8080/JSON/core/view/version/'" // Also quote this URL for consistency
+                                sh "curl --fail --silent \"http://localhost:8080/JSON/core/view/version/\"" // Quote this URL too
                                 zapReady = true
                                 echo "ZAP daemon is ready."
                             } catch (e) {
@@ -139,7 +138,7 @@ pipeline {
 
                 // --- Run ZAP Active Scan using zap-cli ---
                 echo "Running ZAP active scan on ${APP_URL}..."
-                sh ". ${env.VENV_DIR}/bin/activate && zap-cli --zap-path ${env.ZAP_HOME} --port 8080 active-scan --recursive ${env.APP_URL}"
+                sh ". ${env.VENV_DIR}/bin/activate && zap-cli --zap-path ${env.ZAP_HOME} --port 8080 active-scan --recursive \"${APP_URL}\"" // Quote APP_URL here
 
                 // --- Generate HTML Report ---
                 echo "Generating ZAP HTML report..."
