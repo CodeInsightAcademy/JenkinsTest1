@@ -28,39 +28,25 @@ pipeline {
         }
 
         stage('SCA Scan (Dependency-Check)') {
-            steps {
-                // Run Dependency-Check against the requirements.txt
-                sh """
-                /opt/dependency-check/bin/dependency-check.sh \\
-                    --scan . \\
-                    --format HTML \\
-                    --project "MovieRecommender" \\
-                    --out "${DEPENDENCY_CHECK_REPORT_PATH}" \\
-                    --disableRubygems \\
-                    --disableNodeJS \\
-                    --disableBundlerAudit \\
-                    --disableComposer \\
-                    --disableCentral \\
-                    --disableNuspec \\
-                    --disableNodeAudit \\
-                    --disableRetireJs \\
-                    --disableYarnAudit \\
-                    --disableCocoapods \\
-                    --disableGolangDep \\
-                    --disableMix
-                """
-                // You might need to adjust the --disable options based on what languages you want to scan.
-                // For Python, you generally want to keep default enabled, but might disable others to speed up.
-            }
-            post {
-                always {
-                    archiveArtifacts artifacts: '**/dependency-check-report.html', fingerprint: true
+                steps {
+                    # Run Dependency-Check against the requirements.txt
+                    sh """
+                    /opt/dependency-check/bin/dependency-check.sh \\
+                        --scan . \\
+                        --format HTML \\
+                        --project "MovieRecommender" \\
+                        --out "${DEPENDENCY_CHECK_REPORT_PATH}"
+                    """
                 }
-                failure {
-                    echo 'Dependency-Check scan failed or found vulnerabilities!'
+                post {
+                    always {
+                        archiveArtifacts artifacts: '**/dependency-check-report.html', fingerprint: true
+                    }
+                    failure {
+                        echo 'Dependency-Check scan failed or found vulnerabilities!'
+                    }
                 }
             }
-        }
 
         stage('SAST Scan (Bandit)') {
             steps {
