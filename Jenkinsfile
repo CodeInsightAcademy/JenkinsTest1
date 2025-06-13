@@ -57,13 +57,14 @@ pipeline {
             steps {
                 // Run Dependency-Check against the requirements.txt
                 sh """
-                /opt/dependency-check/bin/dependency-check.sh \\
-                    --scan . \\
-                    --format HTML \\
-                    --project "MovieRecommender" \\
-                    --out "${DEPENDENCY_CHECK_REPORT_PATH}" \\
-                    --failOnCVSS 8 \\
-                    
+                docker run --rm \
+                -v $(pwd):/src \
+                owasp/dependency-check \
+                --scan /src \
+                --format HTML \
+                --project MovieRecommender \
+                --out /src \
+                --failOnCVSS 8
                 """
                 // You might need to adjust the --disable options based on what languages you want to scan.
                 // For Python, you generally want to keep default enabled, but might disable others to speed up.
