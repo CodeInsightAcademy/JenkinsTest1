@@ -133,9 +133,9 @@ pipeline {
                 // --- Trigger ZAP Spider (Crawl) via API ---
                 echo "Triggering ZAP spider (crawl) on ${env.APP_URL} via API..."
                 script {
-                    // Instantiate JsonSlurper ONLY when needed for this specific JSON parse
                     def spiderResponse = sh(script: "curl -s \"${env.ZAP_SPIDER_API}?url=${env.APP_URL}&recurse=true\"", returnStdout: true).trim()
-                    def parsedResponse = new groovy.json.JsonSlurper().parseText(spiderResponse)
+                    // FIX: Clone the parsed response to make it serializable
+                    def parsedResponse = new groovy.json.JsonSlurper().parseText(spiderResponse).clone()
                     def spiderId = parsedResponse.scan // ZAP spider API returns scan ID as 'scan'
 
                     if (!spiderId) {
@@ -151,9 +151,8 @@ pipeline {
                             
                             def status = -1
                             try {
-                                // Instantiate JsonSlurper right before parsing
-                                def innerJsonSlurper = new groovy.json.JsonSlurper()
-                                def parsedJson = innerJsonSlurper.parseText(statusJson)
+                                // FIX: Clone the parsed JSON status to make it serializable
+                                def parsedJson = new groovy.json.JsonSlurper().parseText(statusJson).clone()
                                 if (parsedJson && parsedJson.status) {
                                     status = parsedJson.status.toInteger()
                                 }
@@ -175,9 +174,9 @@ pipeline {
                 // --- Trigger ZAP Active Scan via API ---
                 echo "Triggering ZAP active scan on ${env.APP_URL} via API..."
                 script {
-                    // Instantiate JsonSlurper ONLY when needed for this specific JSON parse
                     def ascanResponse = sh(script: "curl -s \"${env.ZAP_ASCSAN_API}?url=${env.APP_URL}&recurse=true\"", returnStdout: true).trim()
-                    def parsedResponse = new groovy.json.JsonSlurper().parseText(ascanResponse)
+                    // FIX: Clone the parsed response to make it serializable
+                    def parsedResponse = new groovy.json.JsonSlurper().parseText(ascanResponse).clone()
                     def ascanId = parsedResponse.scan // ZAP ascan API returns scan ID as 'scan'
 
                     if (!ascanId) {
@@ -193,9 +192,8 @@ pipeline {
                             
                             def status = -1
                             try {
-                                // Instantiate JsonSlurper right before parsing
-                                def innerJsonSlurper = new groovy.json.JsonSlurper()
-                                def parsedJson = innerJsonSlurper.parseText(statusJson)
+                                // FIX: Clone the parsed JSON status to make it serializable
+                                def parsedJson = new groovy.json.JsonSlurper().parseText(statusJson).clone()
                                 if (parsedJson && parsedJson.status) {
                                     status = parsedJson.status.toInteger()
                                 }
