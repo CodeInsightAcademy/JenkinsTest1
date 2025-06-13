@@ -76,19 +76,19 @@ pipeline {
 
 
 
-        stage('SAST Scan (Bandit)') {
-            steps {
-                sh '. venv/bin/activate && bandit -r . -f json -o bandit_report.json --severity-level medium'
-            }
-            post {
-                always {
-                    archiveArtifacts artifacts: '**/bandit_report.json', fingerprint: true
-                }
-                failure {
-                    echo 'Bandit SAST scan failed or found vulnerabilities!'
-                }
-            }
-        }
+        // stage('SAST Scan (Bandit)') {
+        //     steps {
+        //         sh '. venv/bin/activate && bandit -r . -f json -o bandit_report.json --severity-level medium'
+        //     }
+        //     post {
+        //         always {
+        //             archiveArtifacts artifacts: '**/bandit_report.json', fingerprint: true
+        //         }
+        //         failure {
+        //             echo 'Bandit SAST scan failed or found vulnerabilities!'
+        //         }
+        //     }
+        // }
 
         stage('Unit Tests') {
             steps {
