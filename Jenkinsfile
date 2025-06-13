@@ -3,8 +3,12 @@ pipeline {
     agent any
 
     environment {
+       
+        APP_PORT = '5000'
+        VENV_DIR = 'venv'
+    
         // Define your app's URL for DAST scan
-        APP_URL = "http://localhost:5000" // Adjust if your app runs on a different IP/port
+       // APP_URL = "http://localhost:5000" // Adjust if your app runs on a different IP/port
         // For ZAP, specify where to store results
         ZAP_REPORT_PATH = "${WORKSPACE}/zap_report.html"
         // For Dependency-Check, specify where to store results
@@ -26,6 +30,37 @@ pipeline {
                 sh '. venv/bin/activate && pip install -r requirements.txt'
             }
         }
+        stage('Install Dependencies') {
+            steps {
+                sh '''
+                    python3 -m venv venv
+                    . venv/bin/activate
+                    pip install -r requirements.txt
+                '''
+            }
+        }
+        stage('Run Tests') {
+            steps {
+                sh '''#!/bin/bash
+                source venv/bin/activate
+                pytest
+                '''
+            }
+        }
+        stage('Deploy App Locally') {
+            steps {
+                // Stop any existing gunicorn process if running on port 5000
+                sh '''
+                    pkill -f "gunicorn" || true
+                '''
+                // Start the app with gunicorn in the background, binding to port 5000
+                sh '''
+                    . ${VENV_DIR}/bin/activate
+                    nohup gunicorn --bind 0.0.0.0:5000 app:app > app.log 2>&1 &
+                '''
+            }
+        }
+    }
 
         // stage('SCA Scan (Dependency-Check)') {
         //         steps {
