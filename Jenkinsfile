@@ -15,6 +15,7 @@ pipeline {
         // URLs as Groovy strings for robust handling
         ZAP_DOWNLOAD_URL = "https://github.com/zaproxy/zap-archive/releases/download/zap-v${ZAP_VERSION}/ZAP_${ZAP_VERSION}_Linux.tar.gz"
         PYPI_SIMPLE_URL = "https://pypi.org/simple/" // Kept for reference, no longer directly used for pip install
+        // Update ZAP API URLs to use the new ZAP_PORT
         ZAP_API_VERSION_URL = "http://localhost:${ZAP_PORT}/JSON/core/view/version/" // ZAP API endpoint for status check
         ZAP_SPIDER_API = "http://localhost:${ZAP_PORT}/JSON/spider/action/scan/" // ZAP Spider API endpoint (NEW)
         ZAP_ASCSAN_API = "http://localhost:${ZAP_PORT}/JSON/ascan/action/scan/" // ZAP Active Scan API endpoint
@@ -115,7 +116,7 @@ pipeline {
                 // --- Wait for ZAP daemon to start and be ready ---
                 script {
                     def zapReady = false
-                    timeout(time: 5, unit: 'MINUTES') { // Increased timeout to 5 minutes
+                    timeout(time: 5, unit: 'MINUTES') {
                         while (!zapReady) {
                             try {
                                 echo "Checking ZAP API endpoint (${env.ZAP_API_VERSION_URL})..."
@@ -130,12 +131,13 @@ pipeline {
                     }
                 }
 
-                // --- Trigger ZAP Spider (Crawl) via API (NEW STEP) ---
+                // --- Trigger ZAP Spider (Crawl) via API ---
                 echo "Triggering ZAP spider (crawl) on ${env.APP_URL} via API..."
                 script {
+                    // Instantiate JsonSlurper here
+                    def jsonSlurper = new groovy.json.JsonSlurper() 
                     // Trigger the spider, capture spider ID
                     def spiderResponse = sh(script: "curl -s \"${env.ZAP_SPIDER_API}?url=${env.APP_URL}&recurse=true\"", returnStdout: true).trim()
-                    def jsonSlurper = new groovy.json.JsonSlurper()
                     def parsedResponse = jsonSlurper.parseText(spiderResponse)
                     def spiderId = parsedResponse.scan // ZAP spider API returns scan ID as 'scan'
 
@@ -152,7 +154,9 @@ pipeline {
                             
                             def status = -1
                             try {
-                                def parsedJson = jsonSlurper.parseText(statusJson)
+                                // Instantiate JsonSlurper here again
+                                def innerJsonSlurper = new groovy.json.JsonSlurper()
+                                def parsedJson = innerJsonSlurper.parseText(statusJson)
                                 if (parsedJson && parsedJson.status) {
                                     status = parsedJson.status.toInteger()
                                 }
@@ -174,9 +178,10 @@ pipeline {
                 // --- Trigger ZAP Active Scan via API ---
                 echo "Triggering ZAP active scan on ${env.APP_URL} via API..."
                 script {
+                    // Instantiate JsonSlurper here
+                    def jsonSlurper = new groovy.json.JsonSlurper() 
                     // Trigger active scan, capture scan ID
                     def ascanResponse = sh(script: "curl -s \"${env.ZAP_ASCSAN_API}?url=${env.APP_URL}&recurse=true\"", returnStdout: true).trim()
-                    def jsonSlurper = new groovy.json.JsonSlurper()
                     def parsedResponse = jsonSlurper.parseText(ascanResponse)
                     def ascanId = parsedResponse.scan // ZAP ascan API returns scan ID as 'scan'
 
@@ -193,7 +198,9 @@ pipeline {
                             
                             def status = -1
                             try {
-                                def parsedJson = jsonSlurper.parseText(statusJson)
+                                // Instantiate JsonSlurper here again
+                                def innerJsonSlurper = new groovy.json.JsonSlurper()
+                                def parsedJson = innerJsonSlurper.parseText(statusJson)
                                 if (parsedJson && parsedJson.status) {
                                     status = parsedJson.status.toInteger()
                                 }
@@ -249,7 +256,6 @@ pipeline {
                     archiveArtifacts artifacts: 'target/zap-reports/**/*.html', allowEmptyArchive: true
                     echo "ZAP DAST scan completed and application cleaned up."
 
-                    // Archiving ZAP daemon log for inspection (even if pipeline failed)
                     echo "Archiving ZAP daemon log for inspection..."
                     archiveArtifacts artifacts: 'zap_daemon.log', onlyIfSuccessful: false, allowEmptyArchive: true
                 }
