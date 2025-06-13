@@ -56,7 +56,7 @@ pipeline {
         stage('SCA Scan (Dependency-Check)') {
             steps {
                 // Run Dependency-Check against the requirements.txt
-                sh sh '''
+                sh '''
                     docker run --rm \
                     -v $(pwd):/src \
                     owasp/dependency-check \
