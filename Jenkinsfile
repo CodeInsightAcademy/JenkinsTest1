@@ -29,7 +29,7 @@ pipeline {
 
         stage('SCA Scan (Dependency-Check)') {
                 steps {
-                    # Run Dependency-Check against the requirements.txt
+                    // Run Dependency-Check against the requirements.txt
                     sh """
                     /opt/dependency-check/bin/dependency-check.sh \\
                         --scan . \\
