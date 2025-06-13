@@ -11,12 +11,10 @@ pipeline {
         ZAP_BASE_DIR = "zap" // Directory to store ZAP download and extraction
         ZAP_INSTALL_DIR = "${ZAP_BASE_DIR}/ZAP_${ZAP_VERSION}" // Full path to ZAP installation
         
-        // *******************************************************************
-        // IMPORTANT: Copy this line EXACTLY. No [ ] or ( ) around the URL.
-        // *******************************************************************
+        // Correct download URL for ZAP 2.14.0 from the archive
         ZAP_DOWNLOAD_URL = "https://github.com/zaproxy/zap-archive/releases/download/zap-v${ZAP_VERSION}/ZAP_${ZAP_VERSION}_Linux.tar.gz"
         // If you switch to ZAP_VERSION = "2.16.1", use this instead:
-        // ZAP_DOWNLOAD_URL = "https://github.com/zaproxy/zaproxy/releases/download/v${ZAP_VERSION}/ZAP_${ZAP_VERSION}_Linux.tar.gz"
+        // ZAP_DOWNLOAD_URL = "[https://github.com/zaproxy/zaproxy/releases/download/v$](https://github.com/zaproxy/zaproxy/releases/download/v$){ZAP_VERSION}/ZAP_${ZAP_VERSION}_Linux.tar.gz"
         ZAP_TAR_GZ = "${ZAP_BASE_DIR}/ZAP_${ZAP_VERSION}_Linux.tar.gz"
         ZAP_HOME = "${WORKSPACE}/${ZAP_INSTALL_DIR}" // Where ZAP will be extracted
     }
@@ -53,8 +51,9 @@ pipeline {
             steps {
                 echo "Killing existing gunicorn processes (if any)..."
                 sh "pkill -f \"gunicorn\" || true"
-                echo "Starting application locally with gunicorn..."
-                sh "nohup . ${env.VENV_DIR}/bin/activate && gunicorn --bind 0.0.0.0:${env.APP_PORT} app:app > app.log 2>&1 &"
+                echo "Starting application locally with gunicorn from virtual environment..."
+                // CORRECTED: Use the full path to the gunicorn executable within the venv
+                sh "nohup ${env.VENV_DIR}/bin/gunicorn --bind 0.0.0.0:${env.APP_PORT} app:app > app.log 2>&1 &"
             }
         }
 
@@ -74,7 +73,9 @@ pipeline {
             steps {
                 echo "Ensuring no gunicorn and starting Flask dev server for DAST scan..."
                 sh "pkill -f gunicorn || true"
-                sh "nohup python3 app.py &"
+                // CORRECTED: Use the full path to the python executable within the venv
+                echo "Starting Flask development server from virtual environment..."
+                sh "nohup ${env.VENV_DIR}/bin/python3 app.py &"
                 echo "Waiting 10 seconds for Flask app to start..."
                 sleep 10
                 echo "Verifying Flask app is running at ${APP_URL}..."
@@ -103,13 +104,13 @@ pipeline {
                 // --- Install zap-cli into the virtual environment ---
                 script {
                     echo "Checking connectivity to PyPI for zap-cli (via curl for diagnostics)..."
-                    sh "curl -v --max-time 30 https://pypi.org/simple/zap-cli/"
+                    sh "curl -v --max-time 30 [https://pypi.org/simple/zap-cli/](https://pypi.org/simple/zap-cli/)"
                     
                     echo "Attempting to install a common package (requests) to test general PyPI access..."
-                    sh ". ${env.VENV_DIR}/bin/activate && pip install --no-cache-dir --index-url https://pypi.org/simple/ --verbose requests"
+                    sh ". ${env.VENV_DIR}/bin/activate && pip install --no-cache-dir --index-url [https://pypi.org/simple/](https://pypi.org/simple/) --verbose requests"
                     
                     echo "Attempting to install zap-cli..."
-                    sh ". ${env.VENV_DIR}/bin/activate && pip install --no-cache-dir --index-url https://pypi.org/simple/ --verbose zap-cli"
+                    sh ". ${env.VENV_DIR}/bin/activate && pip install --no-cache-dir --index-url [https://pypi.org/simple/](https://pypi.org/simple/) --verbose zap-cli"
                 }
 
                 // --- Start ZAP in Daemon Mode ---
