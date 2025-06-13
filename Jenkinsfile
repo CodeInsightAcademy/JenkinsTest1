@@ -13,7 +13,7 @@ pipeline {
         
         // Correct download URL for ZAP 2.14.0 from the archive
         // If you switch to ZAP_VERSION = "2.16.1", use: "[https://github.com/zaproxy/zaproxy/releases/download/v$](https://github.com/zaproxy/zaproxy/releases/download/v$){ZAP_VERSION}/ZAP_${ZAP_VERSION}_Linux.tar.gz"
-        ZAP_DOWNLOAD_URL = "[https://github.com/zaproxy/zap-archive/releases/download/zap-v$](https://github.com/zaproxy/zap-archive/releases/download/zap-v$){ZAP_VERSION}/ZAP_${ZAP_VERSION}_Linux.tar.gz"
+        ZAP_DOWNLOAD_URL = "https://github.com/zaproxy/zap-archive/releases/download/zap-v$(https://github.com/zaproxy/zap-archive/releases/download/zap-v$){ZAP_VERSION}/ZAP_${ZAP_VERSION}_Linux.tar.gz"
         ZAP_TAR_GZ = "${ZAP_BASE_DIR}/ZAP_${ZAP_VERSION}_Linux.tar.gz"
         ZAP_HOME = "${WORKSPACE}/${ZAP_INSTALL_DIR}" // Where ZAP will be extracted
     }
