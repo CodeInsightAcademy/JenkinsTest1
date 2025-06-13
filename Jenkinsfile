@@ -23,7 +23,7 @@ pipeline {
         ZAP_HOME = "${WORKSPACE}/${ZAP_INSTALL_DIR}" // Where ZAP will be extracted
     }
 
-    stages {
+     stages {
         stage('Declarative: Checkout SCM') {
             steps {
                 checkout scm
@@ -40,6 +40,7 @@ pipeline {
             steps {
                 echo "Setting up Python virtual environment and installing dependencies..."
                 sh "python3 -m venv ${env.VENV_DIR}"
+                // Combine activation and pip install in one command
                 sh ". ${env.VENV_DIR}/bin/activate && pip install -r requirements.txt"
             }
         }
@@ -47,6 +48,7 @@ pipeline {
         stage('Run Tests') {
             steps {
                 echo "Running application tests..."
+                // Combine activation and pytest in one command
                 sh ". ${env.VENV_DIR}/bin/activate && pytest"
             }
         }
@@ -56,6 +58,7 @@ pipeline {
                 echo "Killing existing gunicorn processes (if any)..."
                 sh "pkill -f \"gunicorn\" || true"
                 echo "Starting application locally with gunicorn from virtual environment..."
+                // Directly call venv's gunicorn executable
                 sh "nohup ${env.VENV_DIR}/bin/gunicorn --bind 0.0.0.0:${env.APP_PORT} app:app > app.log 2>&1 &"
             }
         }
@@ -63,6 +66,7 @@ pipeline {
         stage('Unit Tests') {
             steps {
                 echo "Running unit tests again..."
+                // Combine activation and pytest in one command
                 sh ". ${env.VENV_DIR}/bin/activate && pytest"
             }
             post {
@@ -77,15 +81,13 @@ pipeline {
                 echo "Ensuring no gunicorn and starting Flask dev server for DAST scan..."
                 sh "pkill -f gunicorn || true"
                 echo "Starting Flask development server from virtual environment..."
+                // Directly call venv's python executable
                 sh "nohup ${env.VENV_DIR}/bin/python3 app.py > flask_app.log 2>&1 &"
                 echo "Waiting 10 seconds for Flask app to start..."
                 sleep 10
                 echo "Verifying Flask app is running at ${env.APP_URL}..."
-                // Use String.format for curl URL to explicitly handle potential parsing issues
-                script {
-                    def curl_command = String.format("curl --fail %s", env.APP_URL)
-                    sh "${curl_command}"
-                }
+                // Curl command
+                sh "curl --fail ${env.APP_URL}"
                 echo "App is running for DAST scan!"
             }
         }
@@ -99,9 +101,8 @@ pipeline {
                     sh "mkdir -p ${env.ZAP_BASE_DIR}"
                     if (!fileExists("${env.ZAP_HOME}/zap.sh")) {
                         echo "Downloading and extracting OWASP ZAP ${env.ZAP_VERSION}..."
-                        // Use String.format for wget URL
-                        def wget_command = String.format("wget --no-verbose %s -O %s", env.ZAP_DOWNLOAD_URL, env.ZAP_TAR_GZ)
-                        sh "${wget_command}"
+                        // wget command
+                        sh "wget --no-verbose ${env.ZAP_DOWNLOAD_URL} -O ${env.ZAP_TAR_GZ}"
                         sh "tar -xzf ${env.ZAP_TAR_GZ} -C ${env.ZAP_BASE_DIR}"
                         sh "rm ${env.ZAP_TAR_GZ}"
                     } else {
@@ -111,20 +112,17 @@ pipeline {
 
                 // --- Install zap-cli into the virtual environment ---
                 script {
-                    // Activate venv once for all pip commands in this script block
-                    sh ". ${env.VENV_DIR}/bin/activate"
-
                     echo "Checking connectivity to PyPI for zap-cli (via curl for diagnostics)..."
-                    // Use String.format to ensure the URL is a clean string for curl
-                    def curl_pypi_command = String.format("curl -v --max-time 30 %s%s", env.PYPI_SIMPLE_URL, "zap-cli/")
-                    sh "${curl_pypi_command}"
+                    // Curl command
+                    sh "curl -v --max-time 30 ${env.PYPI_SIMPLE_URL}zap-cli/"
                     
                     echo "Attempting to install a common package (requests) to test general PyPI access..."
-                    // Simplified pip install, relying on activated venv
-                    sh "pip install --no-cache-dir --verbose requests"
+                    // IMPORTANT FIX: Combine activation and pip install in ONE sh command
+                    sh ". ${env.VENV_DIR}/bin/activate && pip install --no-cache-dir --verbose requests"
                     
                     echo "Attempting to install zap-cli..."
-                    sh "pip install --no-cache-dir --verbose zap-cli"
+                    // IMPORTANT FIX: Combine activation and pip install in ONE sh command
+                    sh ". ${env.VENV_DIR}/bin/activate && pip install --no-cache-dir --verbose zap-cli"
                 }
 
                 // --- Start ZAP in Daemon Mode ---
@@ -138,9 +136,8 @@ pipeline {
                         while (!zapReady) {
                             try {
                                 echo "Checking ZAP API endpoint (${env.ZAP_API_VERSION_URL})..."
-                                // Use String.format for ZAP API URL
-                                def curl_zap_api_command = String.format("curl --fail --silent %s", env.ZAP_API_VERSION_URL)
-                                sh "${curl_zap_api_command}"
+                                // Curl command
+                                sh "curl --fail --silent ${env.ZAP_API_VERSION_URL}"
                                 zapReady = true
                                 echo "ZAP daemon is ready."
                             } catch (e) {
@@ -153,10 +150,12 @@ pipeline {
 
                 // --- Run ZAP Active Scan using zap-cli ---
                 echo "Running ZAP active scan on ${env.APP_URL}..."
+                // Combine activation and zap-cli command
                 sh ". ${env.VENV_DIR}/bin/activate && zap-cli --zap-path ${env.ZAP_HOME} --port 8080 active-scan --recursive ${env.APP_URL}"
 
                 // --- Generate HTML Report ---
                 echo "Generating ZAP HTML report..."
+                // Combine activation and zap-cli command
                 sh "mkdir -p target/zap-reports && . ${env.VENV_DIR}/bin/activate && zap-cli --zap-path ${env.ZAP_HOME} --port 8080 report --output target/zap-reports/zap-report.html --format html"
             }
             post {
