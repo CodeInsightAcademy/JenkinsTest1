@@ -19,7 +19,7 @@ pipeline {
         ZAP_HOME = "${WORKSPACE}/${ZAP_INSTALL_DIR}" // Where ZAP will be extracted
     }
 
-    stages {
+     stages {
         stage('Declarative: Checkout SCM') {
             steps {
                 checkout scm
@@ -73,7 +73,6 @@ pipeline {
                 echo "Ensuring no gunicorn and starting Flask dev server for DAST scan..."
                 sh "pkill -f gunicorn || true"
                 echo "Starting Flask development server from virtual environment..."
-                // Ensure `nohup` correctly backgrounds the Python process
                 sh "nohup ${env.VENV_DIR}/bin/python3 app.py > flask_app.log 2>&1 &"
                 echo "Waiting 10 seconds for Flask app to start..."
                 sleep 10
@@ -102,24 +101,22 @@ pipeline {
 
                 // --- Install zap-cli into the virtual environment ---
                 script {
-                    // Activate venv once for all pip commands
+                    // Activate venv once for all pip commands in this script block
                     sh ". ${env.VENV_DIR}/bin/activate"
 
                     echo "Checking connectivity to PyPI for zap-cli (via curl for diagnostics)..."
-                    // Use a simple sh string for curl to avoid syntax issues with Groovy's parser
-                    sh "curl -v --max-time 30 [https://pypi.org/simple/zap-cli/](https://pypi.org/simple/zap-cli/)"
+                    // IMPORTANT FIX: Wrap URL in single quotes to prevent shell syntax errors
+                    sh "curl -v --max-time 30 '[https://pypi.org/simple/zap-cli/](https://pypi.org/simple/zap-cli/)'"
                     
                     echo "Attempting to install a common package (requests) to test general PyPI access..."
-                    // Now that venv is active, no need for '. venv/bin/activate &&' prefix
-                    sh "pip install --no-cache-dir --index-url [https://pypi.org/simple/](https://pypi.org/simple/) --verbose requests"
+                    sh "pip install --no-cache-dir --index-url '[https://pypi.org/simple/](https://pypi.org/simple/)' --verbose requests"
                     
                     echo "Attempting to install zap-cli..."
-                    sh "pip install --no-cache-dir --index-url [https://pypi.org/simple/](https://pypi.org/simple/) --verbose zap-cli"
+                    sh "pip install --no-cache-dir --index-url '[https://pypi.org/simple/](https://pypi.org/simple/)' --verbose zap-cli"
                 }
 
                 // --- Start ZAP in Daemon Mode ---
                 echo "Starting ZAP daemon..."
-                // Adding redirection to a log file for nohup
                 sh "nohup ${env.ZAP_HOME}/zap.sh -daemon -port 8080 -host 0.0.0.0 -config api.disablekey=true > zap_daemon.log 2>&1 &"
 
                 // --- Wait for ZAP daemon to start and be ready ---
@@ -129,7 +126,7 @@ pipeline {
                         while (!zapReady) {
                             try {
                                 echo "Checking ZAP API endpoint (http://localhost:8080/JSON/core/view/version/)..."
-                                sh "curl --fail --silent http://localhost:8080/JSON/core/view/version/"
+                                sh "curl --fail --silent 'http://localhost:8080/JSON/core/view/version/'" // Also quote this URL for consistency
                                 zapReady = true
                                 echo "ZAP daemon is ready."
                             } catch (e) {
@@ -142,12 +139,10 @@ pipeline {
 
                 // --- Run ZAP Active Scan using zap-cli ---
                 echo "Running ZAP active scan on ${APP_URL}..."
-                // Activate venv again for this shell command if it runs in a new shell context
                 sh ". ${env.VENV_DIR}/bin/activate && zap-cli --zap-path ${env.ZAP_HOME} --port 8080 active-scan --recursive ${env.APP_URL}"
 
                 // --- Generate HTML Report ---
                 echo "Generating ZAP HTML report..."
-                // Activate venv again for this shell command if it runs in a new shell context
                 sh "mkdir -p target/zap-reports && . ${env.VENV_DIR}/bin/activate && zap-cli --zap-path ${env.ZAP_HOME} --port 8080 report --output target/zap-reports/zap-report.html --format html"
             }
             post {
@@ -158,16 +153,17 @@ pipeline {
                         sleep 5
 
                         echo "Killing Flask app processes on port ${env.APP_PORT}..."
-                        def appPidsOutput = sh(script: "lsof -t -i :${env.APP_PORT}", returnStdout: true).trim().replaceAll('\r', '')
-                        def appPidsList = appPidsOutput.split('\\s+').findAll { it.trim() != "" }
+                        // Using a Groovy list and direct kill commands for robustness
+                        def appPids = sh(script: "lsof -t -i :${env.APP_PORT}", returnStdout: true).trim().split('\\s+')
+                        appPids = appPids.findAll { it.trim() != '' } // Filter empty strings
 
-                        if (appPidsList) {
-                            echo "Found PIDs: ${appPidsList.join(' ')}"
-                            for (pid in appPidsList) {
-                                if (pid.isInteger()) {
-                                    sh "kill ${pid} || true"
-                                } else {
-                                    echo "Warning: '${pid}' is not a valid PID. Skipping."
+                        if (appPids) {
+                            echo "Found PIDs: ${appPids.join(' ')}"
+                            for (pid in appPids) {
+                                try {
+                                    sh "kill ${pid}"
+                                } catch (e) {
+                                    echo "Warning: Failed to kill process ${pid}: ${e.message}. It might have already exited."
                                 }
                             }
                         } else {
