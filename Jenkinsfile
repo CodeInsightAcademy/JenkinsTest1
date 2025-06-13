@@ -42,8 +42,6 @@ pipeline {
         }
 
         stage('Install Dependencies') {
-            // This stage seems redundant if "Setup Environment" already installs requirements.
-            // Leaving it as is based on your provided structure, but consider consolidating.
             steps {
                 sh '''
                     python3 -m venv ''' + env.VENV_DIR + '''
@@ -56,8 +54,8 @@ pipeline {
         stage('Run Tests') {
             steps {
                 sh '''
-                    source ''' + env.VENV_DIR + '''/bin/activate
-                    pytest
+                . ''' + env.VENV_DIR + '''/bin/activate
+                pytest
                 '''
             }
         }
@@ -111,8 +109,8 @@ pipeline {
         stage('Unit Tests') {
             steps {
                 sh '''
-                    source ''' + env.VENV_DIR + '''/bin/activate
-                    pytest
+                . ''' + env.VENV_DIR + '''/bin/activate
+                pytest
                 '''
             }
             post {
