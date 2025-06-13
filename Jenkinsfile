@@ -14,10 +14,9 @@ pipeline {
         
         // URLs as Groovy strings for robust handling
         ZAP_DOWNLOAD_URL = "https://github.com/zaproxy/zap-archive/releases/download/zap-v${ZAP_VERSION}/ZAP_${ZAP_VERSION}_Linux.tar.gz"
-        PYPI_SIMPLE_URL = "https://pypi.org/simple/" // Kept for reference, no longer directly used for pip install
         // Update ZAP API URLs to use the new ZAP_PORT
         ZAP_API_VERSION_URL = "http://localhost:${ZAP_PORT}/JSON/core/view/version/" // ZAP API endpoint for status check
-        ZAP_SPIDER_API = "http://localhost:${ZAP_PORT}/JSON/spider/action/scan/" // ZAP Spider API endpoint (NEW)
+        ZAP_SPIDER_API = "http://localhost:${ZAP_PORT}/JSON/spider/action/scan/" // ZAP Spider API endpoint
         ZAP_ASCSAN_API = "http://localhost:${ZAP_PORT}/JSON/ascan/action/scan/" // ZAP Active Scan API endpoint
         ZAP_REPORT_API = "http://localhost:${ZAP_PORT}/JSON/core/action/htmlreport/" // ZAP Report API endpoint
 
@@ -134,11 +133,9 @@ pipeline {
                 // --- Trigger ZAP Spider (Crawl) via API ---
                 echo "Triggering ZAP spider (crawl) on ${env.APP_URL} via API..."
                 script {
-                    // Instantiate JsonSlurper here
-                    def jsonSlurper = new groovy.json.JsonSlurper() 
-                    // Trigger the spider, capture spider ID
+                    // Instantiate JsonSlurper ONLY when needed for this specific JSON parse
                     def spiderResponse = sh(script: "curl -s \"${env.ZAP_SPIDER_API}?url=${env.APP_URL}&recurse=true\"", returnStdout: true).trim()
-                    def parsedResponse = jsonSlurper.parseText(spiderResponse)
+                    def parsedResponse = new groovy.json.JsonSlurper().parseText(spiderResponse)
                     def spiderId = parsedResponse.scan // ZAP spider API returns scan ID as 'scan'
 
                     if (!spiderId) {
@@ -148,13 +145,13 @@ pipeline {
 
                     // Wait for spider to complete
                     def spiderComplete = false
-                    timeout(time: 3, unit: 'MINUTES') { // Max 3 minutes for spider
+                    timeout(time: 3, unit: 'MINUTES') {
                         while (!spiderComplete) {
                             def statusJson = sh(script: "curl -s http://localhost:${env.ZAP_PORT}/JSON/spider/view/status/?scanId=${spiderId}", returnStdout: true).trim()
                             
                             def status = -1
                             try {
-                                // Instantiate JsonSlurper here again
+                                // Instantiate JsonSlurper right before parsing
                                 def innerJsonSlurper = new groovy.json.JsonSlurper()
                                 def parsedJson = innerJsonSlurper.parseText(statusJson)
                                 if (parsedJson && parsedJson.status) {
@@ -178,11 +175,9 @@ pipeline {
                 // --- Trigger ZAP Active Scan via API ---
                 echo "Triggering ZAP active scan on ${env.APP_URL} via API..."
                 script {
-                    // Instantiate JsonSlurper here
-                    def jsonSlurper = new groovy.json.JsonSlurper() 
-                    // Trigger active scan, capture scan ID
+                    // Instantiate JsonSlurper ONLY when needed for this specific JSON parse
                     def ascanResponse = sh(script: "curl -s \"${env.ZAP_ASCSAN_API}?url=${env.APP_URL}&recurse=true\"", returnStdout: true).trim()
-                    def parsedResponse = jsonSlurper.parseText(ascanResponse)
+                    def parsedResponse = new groovy.json.JsonSlurper().parseText(ascanResponse)
                     def ascanId = parsedResponse.scan // ZAP ascan API returns scan ID as 'scan'
 
                     if (!ascanId) {
@@ -192,13 +187,13 @@ pipeline {
 
                     // Wait for active scan to complete
                     def ascanComplete = false
-                    timeout(time: 5, unit: 'MINUTES') { // Max 5 minutes for active scan
+                    timeout(time: 5, unit: 'MINUTES') {
                         while (!ascanComplete) {
                             def statusJson = sh(script: "curl -s http://localhost:${env.ZAP_PORT}/JSON/ascan/view/status/?scanId=${ascanId}", returnStdout: true).trim()
                             
                             def status = -1
                             try {
-                                // Instantiate JsonSlurper here again
+                                // Instantiate JsonSlurper right before parsing
                                 def innerJsonSlurper = new groovy.json.JsonSlurper()
                                 def parsedJson = innerJsonSlurper.parseText(statusJson)
                                 if (parsedJson && parsedJson.status) {
