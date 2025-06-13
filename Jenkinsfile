@@ -22,7 +22,7 @@ pipeline {
         ZAP_HOME = "${WORKSPACE}/${ZAP_INSTALL_DIR}" // Where ZAP will be extracted
     }
 
-    stages {
+     stages {
         stage('Declarative: Checkout SCM') {
             steps {
                 checkout scm
@@ -106,7 +106,10 @@ pipeline {
 
                 // --- Start ZAP in Daemon Mode ---
                 echo "Checking if port 8080 is already in use before starting ZAP..."
-                sh "lsof -i :8080 || echo 'Port 8080 is free or lsof not available/working.'" // Check port
+                // Using 'lsof -i :8080' can still fail if lsof isn't installed or permssions are off.
+                // A simpler check that might pass is just trying to bind, but if it's already used, it fails.
+                // The current lsof is good for diagnostics if it gives output.
+                sh "lsof -i :8080 || echo 'Port 8080 is free or lsof not available/working.'"
                 echo "Starting ZAP daemon..."
                 // Redirect ZAP's stdout/stderr to a log file for debugging
                 sh "nohup ${env.ZAP_HOME}/zap.sh -daemon -port 8080 -host 0.0.0.0 -config api.disablekey=true > zap_daemon.log 2>&1 &"
@@ -132,7 +135,8 @@ pipeline {
                 // --- Trigger ZAP Active Scan via API ---
                 echo "Triggering ZAP active scan on ${env.APP_URL} via API..."
                 script {
-                    sh "curl \"${env.ZAP_ASCSAN_API}?url=${env.APP_URL}&recurse=true\"" // Ensure URL is quoted
+                    // It's generally better to pass arguments separately or ensure proper quoting for special chars
+                    sh "curl ${env.ZAP_ASCSAN_API}?url=${env.APP_URL}&recurse=true"
                 }
 
                 // --- Wait for ZAP Active Scan to complete ---
@@ -142,7 +146,7 @@ pipeline {
                     timeout(time: 5, unit: 'MINUTES') { // Max 5 minutes for scan
                         while (!scanComplete) {
                             // Check status of scanId 0 (latest scan)
-                            def statusJson = sh(script: "curl -s http://localhost:8080/JSON/ascan/view/status/?scanId=0", returnStdout: true).trim()
+                            def statusJson = sh(script: "curl -s ${env.ZAP_ASCSAN_API.replace('/action/scan/', '/view/status/')}?scanId=0", returnStdout: true).trim()
                             
                             // Parse JSON to get status, fallback to -1 if parsing fails
                             def status = -1
@@ -167,7 +171,6 @@ pipeline {
                                 echo "ZAP active scan progress: ${status}%"
                                 sleep 15
                             }
-                            // If scan is still running after timeout, it will be aborted by the outer timeout
                         }
                     }
                 }
@@ -176,19 +179,19 @@ pipeline {
                 echo "Generating ZAP HTML report..."
                 script {
                     sh "mkdir -p target/zap-reports" // Ensure directory exists
-                    // Use a temporary file for curl output to avoid issues with large reports
-                    sh "curl -s \"${env.ZAP_REPORT_API}?formMethod=GET&form=htmlreport\" > target/zap-reports/zap-report.html"
+                    // Use curl to download the report directly to the file
+                    sh "curl -s -o target/zap-reports/zap-report.html \"${env.ZAP_REPORT_API}?formMethod=GET&form=htmlreport\""
                 }
             }
             post {
                 always {
-                    script {
+                    script { // This script block is the correct place for Groovy logic and step calls
                         echo "Shutting down ZAP daemon..."
                         sh "pkill -f 'zap.sh' || true"
                         sleep 5
 
                         echo "Checking if port 8080 is still in use after ZAP shutdown..."
-                        sh "lsof -i :8080 || echo 'Port 8080 is free after ZAP shutdown or lsof not available/working.'" // Check port
+                        sh "lsof -i :8080 || echo 'Port 8080 is free after ZAP shutdown or lsof not available/working.'"
 
                         echo "Killing Flask app processes on port ${env.APP_PORT}..."
                         def appPids = sh(script: "lsof -t -i :${env.APP_PORT}", returnStdout: true).trim().split('\\s+')
@@ -206,15 +209,18 @@ pipeline {
                         } else {
                             echo "No Flask app process found on port ${env.APP_PORT} to kill."
                         }
+
+                        // FIXED: This part was causing the "Expected a step" error
+                        // Moved outside of a direct 'if' at this top level,
+                        // and `archiveArtifacts` is already a 'step' that can handle a missing file
+                        // by using `allowEmptyArchive: true` if the pattern matches nothing.
+                        // We will just archive it directly. If zap_daemon.log doesn't exist,
+                        // `archiveArtifacts` with `allowEmptyArchive: true` will simply skip it.
+                        echo "Archiving ZAP daemon log for inspection..."
+                        archiveArtifacts artifacts: 'zap_daemon.log', onlyIfSuccessful: false, allowEmptyArchive: true
                     }
                     archiveArtifacts artifacts: 'target/zap-reports/**/*.html', allowEmptyArchive: true
                     echo "ZAP DAST scan completed and application cleaned up."
-
-                    // If ZAP didn't start or completed with errors, its logs will be here:
-                    if (fileExists("zap_daemon.log")) {
-                        echo "Archiving ZAP daemon log for inspection..."
-                        archiveArtifacts artifacts: 'zap_daemon.log', onlyIfSuccessful: false
-                    }
                 }
                 failure {
                     echo "ZAP DAST scan detected vulnerabilities or failed to complete successfully! Check zap_daemon.log for details."
