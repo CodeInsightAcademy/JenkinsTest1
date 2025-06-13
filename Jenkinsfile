@@ -10,13 +10,13 @@ pipeline {
         ZAP_VERSION = "2.14.0" // Specify the ZAP version to download. Consider upgrading to "2.16.1"
         ZAP_BASE_DIR = "zap" // Directory to store ZAP download and extraction
         ZAP_INSTALL_DIR = "${ZAP_BASE_DIR}/ZAP_${ZAP_VERSION}" // Full path to ZAP installation
-        ZAP_PORT = '8090' // *** NEW: ZAP's listening port to avoid conflict with Jenkins agent ***
+        ZAP_PORT = '8090' // ZAP's listening port to avoid conflict with Jenkins agent
         
         // URLs as Groovy strings for robust handling
         ZAP_DOWNLOAD_URL = "https://github.com/zaproxy/zap-archive/releases/download/zap-v${ZAP_VERSION}/ZAP_${ZAP_VERSION}_Linux.tar.gz"
         PYPI_SIMPLE_URL = "https://pypi.org/simple/" // Kept for reference, no longer directly used for pip install
-        // Update ZAP API URLs to use the new ZAP_PORT
         ZAP_API_VERSION_URL = "http://localhost:${ZAP_PORT}/JSON/core/view/version/" // ZAP API endpoint for status check
+        ZAP_SPIDER_API = "http://localhost:${ZAP_PORT}/JSON/spider/action/scan/" // ZAP Spider API endpoint (NEW)
         ZAP_ASCSAN_API = "http://localhost:${ZAP_PORT}/JSON/ascan/action/scan/" // ZAP Active Scan API endpoint
         ZAP_REPORT_API = "http://localhost:${ZAP_PORT}/JSON/core/action/htmlreport/" // ZAP Report API endpoint
 
@@ -108,9 +108,8 @@ pipeline {
 
                 // --- Start ZAP in Daemon Mode ---
                 echo "Checking if port ${env.ZAP_PORT} is already in use before starting ZAP..."
-                sh "lsof -i :${env.ZAP_PORT} || echo 'Port ${env.ZAP_PORT} is free or lsof not available/working.'" // Check new port
+                sh "lsof -i :${env.ZAP_PORT} || echo 'Port ${env.ZAP_PORT} is free or lsof not available/working.'"
                 echo "Starting ZAP daemon on port ${env.ZAP_PORT}..."
-                // ZAP daemon starts on the new port
                 sh "nohup ${env.ZAP_HOME}/zap.sh -daemon -port ${env.ZAP_PORT} -host 0.0.0.0 -config api.disablekey=true > zap_daemon.log 2>&1 &"
 
                 // --- Wait for ZAP daemon to start and be ready ---
@@ -120,7 +119,7 @@ pipeline {
                         while (!zapReady) {
                             try {
                                 echo "Checking ZAP API endpoint (${env.ZAP_API_VERSION_URL})..."
-                                sh "curl --fail --silent ${env.ZAP_API_VERSION_URL}" // Uses new port
+                                sh "curl --fail --silent ${env.ZAP_API_VERSION_URL}"
                                 zapReady = true
                                 echo "ZAP daemon is ready."
                             } catch (e) {
@@ -131,41 +130,81 @@ pipeline {
                     }
                 }
 
-                // --- Trigger ZAP Active Scan via API ---
-                echo "Triggering ZAP active scan on ${env.APP_URL} via API..."
+                // --- Trigger ZAP Spider (Crawl) via API (NEW STEP) ---
+                echo "Triggering ZAP spider (crawl) on ${env.APP_URL} via API..."
                 script {
-                    // Uses new ZAP_ASCSAN_API which incorporates ZAP_PORT
-                    sh "curl \"${env.ZAP_ASCSAN_API}?url=${env.APP_URL}&recurse=true\""
-                }
+                    // Trigger the spider, capture spider ID
+                    def spiderResponse = sh(script: "curl -s \"${env.ZAP_SPIDER_API}?url=${env.APP_URL}&recurse=true\"", returnStdout: true).trim()
+                    def jsonSlurper = new groovy.json.JsonSlurper()
+                    def parsedResponse = jsonSlurper.parseText(spiderResponse)
+                    def spiderId = parsedResponse.scan // ZAP spider API returns scan ID as 'scan'
 
-                // --- Wait for ZAP Active Scan to complete ---
-                echo "Waiting for ZAP active scan to complete..."
-                script {
-                    def scanComplete = false
-                    timeout(time: 5, unit: 'MINUTES') { // Max 5 minutes for scan
-                        while (!scanComplete) {
-                            // Update curl command to use ZAP_PORT for status check
-                            def statusJson = sh(script: "curl -s http://localhost:${env.ZAP_PORT}/JSON/ascan/view/status/?scanId=0", returnStdout: true).trim()
+                    if (!spiderId) {
+                        error "Failed to start ZAP spider. Response: ${spiderResponse}"
+                    }
+                    echo "ZAP spider started with ID: ${spiderId}"
+
+                    // Wait for spider to complete
+                    def spiderComplete = false
+                    timeout(time: 3, unit: 'MINUTES') { // Max 3 minutes for spider
+                        while (!spiderComplete) {
+                            def statusJson = sh(script: "curl -s http://localhost:${env.ZAP_PORT}/JSON/spider/view/status/?scanId=${spiderId}", returnStdout: true).trim()
                             
                             def status = -1
                             try {
-                                def jsonSlurper = new groovy.json.JsonSlurper()
                                 def parsedJson = jsonSlurper.parseText(statusJson)
                                 if (parsedJson && parsedJson.status) {
                                     status = parsedJson.status.toInteger()
                                 }
                             } catch (e) {
-                                echo "Could not parse ZAP scan status JSON: ${statusJson}. Error: ${e.message}"
+                                echo "Could not parse ZAP spider status JSON: ${statusJson}. Error: ${e.message}"
+                            }
+
+                            if (status == 100) {
+                                echo "ZAP spider 100% complete."
+                                spiderComplete = true
+                            } else {
+                                echo "ZAP spider progress: ${status}%"
+                                sleep 10
+                            }
+                        }
+                    }
+                }
+
+                // --- Trigger ZAP Active Scan via API ---
+                echo "Triggering ZAP active scan on ${env.APP_URL} via API..."
+                script {
+                    // Trigger active scan, capture scan ID
+                    def ascanResponse = sh(script: "curl -s \"${env.ZAP_ASCSAN_API}?url=${env.APP_URL}&recurse=true\"", returnStdout: true).trim()
+                    def jsonSlurper = new groovy.json.JsonSlurper()
+                    def parsedResponse = jsonSlurper.parseText(ascanResponse)
+                    def ascanId = parsedResponse.scan // ZAP ascan API returns scan ID as 'scan'
+
+                    if (!ascanId) {
+                        error "Failed to start ZAP active scan. Response: ${ascanResponse}"
+                    }
+                    echo "ZAP active scan started with ID: ${ascanId}"
+
+                    // Wait for active scan to complete
+                    def ascanComplete = false
+                    timeout(time: 5, unit: 'MINUTES') { // Max 5 minutes for active scan
+                        while (!ascanComplete) {
+                            def statusJson = sh(script: "curl -s http://localhost:${env.ZAP_PORT}/JSON/ascan/view/status/?scanId=${ascanId}", returnStdout: true).trim()
+                            
+                            def status = -1
+                            try {
+                                def parsedJson = jsonSlurper.parseText(statusJson)
+                                if (parsedJson && parsedJson.status) {
+                                    status = parsedJson.status.toInteger()
+                                }
+                            } catch (e) {
+                                echo "Could not parse ZAP active scan status JSON: ${statusJson}. Error: ${e.message}"
                             }
 
                             if (status == 100) {
                                 echo "ZAP active scan 100% complete."
-                                scanComplete = true
-                            } else if (status == -1) {
-                                echo "ZAP active scan started (status -1 might indicate it's processing or finished if no scanId specified, or an error). Will recheck."
-                                sleep 15
-                            }
-                             else {
+                                ascanComplete = true
+                            } else {
                                 echo "ZAP active scan progress: ${status}%"
                                 sleep 15
                             }
@@ -177,7 +216,6 @@ pipeline {
                 echo "Generating ZAP HTML report..."
                 script {
                     sh "mkdir -p target/zap-reports" // Ensure directory exists
-                    // Update curl command to use ZAP_PORT for report generation
                     sh "curl -s -o target/zap-reports/zap-report.html \"${env.ZAP_REPORT_API}?formMethod=GET&form=htmlreport\""
                 }
             }
@@ -189,7 +227,7 @@ pipeline {
                         sleep 5
 
                         echo "Checking if port ${env.ZAP_PORT} is still in use after ZAP shutdown..."
-                        sh "lsof -i :${env.ZAP_PORT} || echo 'Port ${env.ZAP_PORT} is free after ZAP shutdown or lsof not available/working.'" // Check new port
+                        sh "lsof -i :${env.ZAP_PORT} || echo 'Port ${env.ZAP_PORT} is free after ZAP shutdown or lsof not available/working.'"
 
                         echo "Killing Flask app processes on port ${env.APP_PORT}..."
                         def appPids = sh(script: "lsof -t -i :${env.APP_PORT}", returnStdout: true).trim().split('\\s+')
