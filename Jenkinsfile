@@ -52,7 +52,6 @@ pipeline {
                 echo "Killing existing gunicorn processes (if any)..."
                 sh "pkill -f \"gunicorn\" || true"
                 echo "Starting application locally with gunicorn from virtual environment..."
-                // CORRECTED: Use the full path to the gunicorn executable within the venv
                 sh "nohup ${env.VENV_DIR}/bin/gunicorn --bind 0.0.0.0:${env.APP_PORT} app:app > app.log 2>&1 &"
             }
         }
@@ -73,9 +72,9 @@ pipeline {
             steps {
                 echo "Ensuring no gunicorn and starting Flask dev server for DAST scan..."
                 sh "pkill -f gunicorn || true"
-                // CORRECTED: Use the full path to the python executable within the venv
                 echo "Starting Flask development server from virtual environment..."
-                sh "nohup ${env.VENV_DIR}/bin/python3 app.py &"
+                // Ensure `nohup` correctly backgrounds the Python process
+                sh "nohup ${env.VENV_DIR}/bin/python3 app.py > flask_app.log 2>&1 &"
                 echo "Waiting 10 seconds for Flask app to start..."
                 sleep 10
                 echo "Verifying Flask app is running at ${APP_URL}..."
@@ -103,18 +102,24 @@ pipeline {
 
                 // --- Install zap-cli into the virtual environment ---
                 script {
+                    // Activate venv once for all pip commands
+                    sh ". ${env.VENV_DIR}/bin/activate"
+
                     echo "Checking connectivity to PyPI for zap-cli (via curl for diagnostics)..."
+                    // Use a simple sh string for curl to avoid syntax issues with Groovy's parser
                     sh "curl -v --max-time 30 [https://pypi.org/simple/zap-cli/](https://pypi.org/simple/zap-cli/)"
                     
                     echo "Attempting to install a common package (requests) to test general PyPI access..."
-                    sh ". ${env.VENV_DIR}/bin/activate && pip install --no-cache-dir --index-url [https://pypi.org/simple/](https://pypi.org/simple/) --verbose requests"
+                    // Now that venv is active, no need for '. venv/bin/activate &&' prefix
+                    sh "pip install --no-cache-dir --index-url [https://pypi.org/simple/](https://pypi.org/simple/) --verbose requests"
                     
                     echo "Attempting to install zap-cli..."
-                    sh ". ${env.VENV_DIR}/bin/activate && pip install --no-cache-dir --index-url [https://pypi.org/simple/](https://pypi.org/simple/) --verbose zap-cli"
+                    sh "pip install --no-cache-dir --index-url [https://pypi.org/simple/](https://pypi.org/simple/) --verbose zap-cli"
                 }
 
                 // --- Start ZAP in Daemon Mode ---
                 echo "Starting ZAP daemon..."
+                // Adding redirection to a log file for nohup
                 sh "nohup ${env.ZAP_HOME}/zap.sh -daemon -port 8080 -host 0.0.0.0 -config api.disablekey=true > zap_daemon.log 2>&1 &"
 
                 // --- Wait for ZAP daemon to start and be ready ---
@@ -137,10 +142,12 @@ pipeline {
 
                 // --- Run ZAP Active Scan using zap-cli ---
                 echo "Running ZAP active scan on ${APP_URL}..."
+                // Activate venv again for this shell command if it runs in a new shell context
                 sh ". ${env.VENV_DIR}/bin/activate && zap-cli --zap-path ${env.ZAP_HOME} --port 8080 active-scan --recursive ${env.APP_URL}"
 
                 // --- Generate HTML Report ---
                 echo "Generating ZAP HTML report..."
+                // Activate venv again for this shell command if it runs in a new shell context
                 sh "mkdir -p target/zap-reports && . ${env.VENV_DIR}/bin/activate && zap-cli --zap-path ${env.ZAP_HOME} --port 8080 report --output target/zap-reports/zap-report.html --format html"
             }
             post {
