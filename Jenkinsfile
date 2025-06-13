@@ -63,7 +63,7 @@ pipeline {
                     --project "MovieRecommender" \\
                     --out "${DEPENDENCY_CHECK_REPORT_PATH}" \\
                     --failOnCVSS 8 \\
-                    --noupdate
+                    
                 """
                 // You might need to adjust the --disable options based on what languages you want to scan.
                 // For Python, you generally want to keep default enabled, but might disable others to speed up.
