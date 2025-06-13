@@ -11,15 +11,19 @@ pipeline {
         ZAP_BASE_DIR = "zap" // Directory to store ZAP download and extraction
         ZAP_INSTALL_DIR = "${ZAP_BASE_DIR}/ZAP_${ZAP_VERSION}" // Full path to ZAP installation
         
-        // Correct download URL for ZAP 2.14.0 from the archive
+        // *******************************************************************
+        // IMPORTANT: These URLs are now Groovy strings. The markdown link issue
+        // should be completely avoided by defining them outside the `sh` command.
+        // *******************************************************************
         ZAP_DOWNLOAD_URL = "https://github.com/zaproxy/zap-archive/releases/download/zap-v${ZAP_VERSION}/ZAP_${ZAP_VERSION}_Linux.tar.gz"
-        // If you switch to ZAP_VERSION = "2.16.1", use this instead:
-        // ZAP_DOWNLOAD_URL = "[https://github.com/zaproxy/zaproxy/releases/download/v$](https://github.com/zaproxy/zaproxy/releases/download/v$){ZAP_VERSION}/ZAP_${ZAP_VERSION}_Linux.tar.gz"
+        PYPI_SIMPLE_URL = "[https://pypi.org/simple/](https://pypi.org/simple/)" // Generic PyPI Simple Index URL
+        ZAP_API_VERSION_URL = "http://localhost:8080/JSON/core/view/version/" // ZAP API endpoint for status check
+
         ZAP_TAR_GZ = "${ZAP_BASE_DIR}/ZAP_${ZAP_VERSION}_Linux.tar.gz"
         ZAP_HOME = "${WORKSPACE}/${ZAP_INSTALL_DIR}" // Where ZAP will be extracted
     }
 
-     stages {
+    stages {
         stage('Declarative: Checkout SCM') {
             steps {
                 checkout scm
@@ -76,22 +80,24 @@ pipeline {
                 sh "nohup ${env.VENV_DIR}/bin/python3 app.py > flask_app.log 2>&1 &"
                 echo "Waiting 10 seconds for Flask app to start..."
                 sleep 10
-                echo "Verifying Flask app is running at ${APP_URL}..."
-                sh "curl --fail \"${APP_URL}\"" // Quote APP_URL here as well for robustness
+                echo "Verifying Flask app is running at ${env.APP_URL}..."
+                // Use the Groovy variable directly
+                sh "curl --fail ${env.APP_URL}"
                 echo "App is running for DAST scan!"
             }
         }
 
         stage('DAST Scan (OWASP ZAP)') {
             steps {
-                echo "Starting DAST Scan on ${APP_URL}"
+                echo "Starting DAST Scan on ${env.APP_URL}"
 
                 // --- ZAP Installation (download and extract if not present) ---
                 script {
                     sh "mkdir -p ${env.ZAP_BASE_DIR}"
                     if (!fileExists("${env.ZAP_HOME}/zap.sh")) {
                         echo "Downloading and extracting OWASP ZAP ${env.ZAP_VERSION}..."
-                        sh "wget --no-verbose \"${env.ZAP_DOWNLOAD_URL}\" -O ${env.ZAP_TAR_GZ}" // Quote download URL
+                        // Use Groovy variable directly
+                        sh "wget --no-verbose ${env.ZAP_DOWNLOAD_URL} -O ${env.ZAP_TAR_GZ}"
                         sh "tar -xzf ${env.ZAP_TAR_GZ} -C ${env.ZAP_BASE_DIR}"
                         sh "rm ${env.ZAP_TAR_GZ}"
                     } else {
@@ -101,17 +107,20 @@ pipeline {
 
                 // --- Install zap-cli into the virtual environment ---
                 script {
-                    sh ". ${env.VENV_DIR}/bin/activate" // Activate venv once for subsequent commands in this script block
+                    // Activate venv once for all pip commands in this script block
+                    sh ". ${env.VENV_DIR}/bin/activate"
 
                     echo "Checking connectivity to PyPI for zap-cli (via curl for diagnostics)..."
-                    // IMPORTANT FIX: Use escaped double quotes for literal URLs in sh commands
-                    sh "curl -v --max-time 30 \"[https://pypi.org/simple/zap-cli/](https://pypi.org/simple/zap-cli/)\""
+                    // Use the Groovy variable for the URL
+                    sh "curl -v --max-time 30 ${env.PYPI_SIMPLE_URL}zap-cli/"
                     
                     echo "Attempting to install a common package (requests) to test general PyPI access..."
-                    sh "pip install --no-cache-dir --index-url \"[https://pypi.org/simple/](https://pypi.org/simple/)\" --verbose requests"
+                    // Use the Groovy variable for the index-url
+                    sh "pip install --no-cache-dir --index-url ${env.PYPI_SIMPLE_URL} --verbose requests"
                     
                     echo "Attempting to install zap-cli..."
-                    sh "pip install --no-cache-dir --index-url \"[https://pypi.org/simple/](https://pypi.org/simple/)\" --verbose zap-cli"
+                    // Use the Groovy variable for the index-url
+                    sh "pip install --no-cache-dir --index-url ${env.PYPI_SIMPLE_URL} --verbose zap-cli"
                 }
 
                 // --- Start ZAP in Daemon Mode ---
@@ -124,8 +133,9 @@ pipeline {
                     timeout(time: 2, unit: 'MINUTES') {
                         while (!zapReady) {
                             try {
-                                echo "Checking ZAP API endpoint (http://localhost:8080/JSON/core/view/version/)..."
-                                sh "curl --fail --silent \"http://localhost:8080/JSON/core/view/version/\"" // Quote this URL too
+                                echo "Checking ZAP API endpoint (${env.ZAP_API_VERSION_URL})..."
+                                // Use the Groovy variable for the ZAP API URL
+                                sh "curl --fail --silent ${env.ZAP_API_VERSION_URL}"
                                 zapReady = true
                                 echo "ZAP daemon is ready."
                             } catch (e) {
@@ -137,8 +147,8 @@ pipeline {
                 }
 
                 // --- Run ZAP Active Scan using zap-cli ---
-                echo "Running ZAP active scan on ${APP_URL}..."
-                sh ". ${env.VENV_DIR}/bin/activate && zap-cli --zap-path ${env.ZAP_HOME} --port 8080 active-scan --recursive \"${APP_URL}\"" // Quote APP_URL here
+                echo "Running ZAP active scan on ${env.APP_URL}..."
+                sh ". ${env.VENV_DIR}/bin/activate && zap-cli --zap-path ${env.ZAP_HOME} --port 8080 active-scan --recursive ${env.APP_URL}"
 
                 // --- Generate HTML Report ---
                 echo "Generating ZAP HTML report..."
@@ -152,9 +162,8 @@ pipeline {
                         sleep 5
 
                         echo "Killing Flask app processes on port ${env.APP_PORT}..."
-                        // Using a Groovy list and direct kill commands for robustness
                         def appPids = sh(script: "lsof -t -i :${env.APP_PORT}", returnStdout: true).trim().split('\\s+')
-                        appPids = appPids.findAll { it.trim() != '' } // Filter empty strings
+                        appPids = appPids.findAll { it.trim() != '' }
 
                         if (appPids) {
                             echo "Found PIDs: ${appPids.join(' ')}"
