@@ -37,7 +37,7 @@ pipeline {
                         --project "MovieRecommender" \\
                         --out "${DEPENDENCY_CHECK_REPORT_PATH}" \\
                         --data "${WORKSPACE}/.dependency-check-data" \\
-                        --temp "${WORKSPACE}/.dependency-check-temp"
+                        
                     """
                 }
                 post {
