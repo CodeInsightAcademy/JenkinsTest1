@@ -125,8 +125,9 @@ pipeline {
 
                 // --- ZAP Installation (download and extract if not present) ---
                 script {
-                    sh '''#!/bin/bash  <--- ADDED SHEBANG
-                        set -euxo pipefail
+                    sh '''
+                        # Removed #!/bin/bash and -o pipefail for compatibility
+                        set -eux
                         mkdir -p ''' + env.ZAP_BASE_DIR + '''
                         if [ ! -f "''' + env.ZAP_HOME + '''/zap.sh" ]; then
                             echo "Downloading and extracting OWASP ZAP ''' + env.ZAP_VERSION + '''..."
@@ -143,11 +144,14 @@ pipeline {
                 sh '. venv/bin/activate && pip install zap-cli'
 
                 // --- Start ZAP in Daemon Mode ---
-                sh '''#!/bin/bash  <--- ADDED SHEBANG
-                    set -euxo pipefail
-                    echo "Starting ZAP daemon..."
-                    nohup ${ZAP_HOME}/zap.sh -daemon -port 8080 -host 0.0.0.0 -config api.disablekey=true &
-                '''
+                script { // Added script block for better Groovy variable access
+                    sh '''
+                        # Removed #!/bin/bash and -o pipefail for compatibility
+                        set -eux
+                        echo "Starting ZAP daemon..."
+                        nohup ${ZAP_HOME}/zap.sh -daemon -port 8080 -host 0.0.0.0 -config api.disablekey=true &
+                    '''
+                }
 
                 // --- Wait for ZAP daemon to start and be ready ---
                 script {
@@ -155,9 +159,8 @@ pipeline {
                     timeout(time: 2, unit: 'MINUTES') { // Max 2 minutes wait
                         while (!zapReady) {
                             try {
-                                // Check ZAP API endpoint - Use a more robust check for HTTP 200
-                                sh "curl --fail --silent ${APP_URL}" // Example, you might check ZAP's own API endpoint once it's up
-                                sh "curl --fail --silent http://localhost:8080/JSON/core/view/version/" // This is the actual ZAP API endpoint to check
+                                // Check ZAP API endpoint to ensure ZAP is running
+                                sh "curl --fail --silent http://localhost:8080/JSON/core/view/version/"
                                 zapReady = true
                                 echo "ZAP daemon is ready."
                             } catch (e) {
@@ -169,21 +172,27 @@ pipeline {
                 }
 
                 // --- Run ZAP Active Scan using zap-cli ---
-                sh '''#!/bin/bash  <--- ADDED SHEBANG
-                    set -euxo pipefail
-                    . venv/bin/activate
-                    echo "Running ZAP active scan on ${APP_URL}..."
-                    zap-cli --zap-path ${ZAP_HOME} --port 8080 active-scan --recursive ${APP_URL}
-                '''
+                script { // Added script block
+                    sh '''
+                        # Removed #!/bin/bash and -o pipefail for compatibility
+                        set -eux
+                        . venv/bin/activate
+                        echo "Running ZAP active scan on ${APP_URL}..."
+                        zap-cli --zap-path ${ZAP_HOME} --port 8080 active-scan --recursive ${APP_URL}
+                    '''
+                }
 
                 // --- Generate HTML Report ---
-                sh '''#!/bin/bash  <--- ADDED SHEBANG
-                    set -euxo pipefail
-                    . venv/bin/activate
-                    echo "Generating ZAP HTML report..."
-                    mkdir -p target/zap-reports
-                    zap-cli --zap-path ${ZAP_HOME} --port 8080 report --output target/zap-reports/zap-report.html --format html
-                '''
+                script { // Added script block
+                    sh '''
+                        # Removed #!/bin/bash and -o pipefail for compatibility
+                        set -eux
+                        . venv/bin/activate
+                        echo "Generating ZAP HTML report..."
+                        mkdir -p target/zap-reports
+                        zap-cli --zap-path ${ZAP_HOME} --port 8080 report --output target/zap-reports/zap-report.html --format html
+                    '''
+                }
             }
             post {
                 always {
@@ -194,9 +203,9 @@ pipeline {
                         sleep 5 // Give ZAP a moment to shut down cleanly
 
                         // --- Kill the Flask App (started in 'Deploy App for DAST' stage) ---
-                        // ADDED .replaceAll('\r', '') to remove potential carriage returns
+                        // Ensure lsof output is clean
                         def appPidsOutput = sh(script: 'lsof -t -i :5000', returnStdout: true).trim().replaceAll('\r', '')
-                        def appPidsList = appPidsOutput.split('\\s+') // Split by any whitespace
+                        def appPidsList = appPidsOutput.split('\\s+').findAll { it.trim() != "" } // Split and filter empty strings
 
                         if (appPidsList) {
                             echo "Killing Flask app process(es) on port 5000: ${appPidsList.join(' ')}"
