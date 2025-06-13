@@ -32,7 +32,7 @@ pipeline {
                     // Run Dependency-Check against the requirements.txt
                     sh """
                     /opt/dependency-check/bin/dependency-check.sh \
-                      --nvdApiKey YOUR_NVD_API_KEY \
+                      --nvdApiKey 593311b1-e9da-44c8-8b7c-060f4346b08d \
                       --scan . \
                       --format HTML \
                       --project MovieRecommender \
